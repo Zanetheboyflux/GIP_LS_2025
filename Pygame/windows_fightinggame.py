@@ -1,48 +1,110 @@
 import pygame
+import pygame_menu
+import os
 import sys
 
-pygame.init()
 
-res = (720, 720)
+class GameMenu:
+    def __init__(self):
+        pygame.init()
+        self.res = (900, 900)
+        self.screen = pygame.display.set_mode(self.res)
+        pygame.display.set_caption("Character Selection Menu")
 
-screen = pygame.display.set_mode(res)
+        # Store the selected character
+        self.selected_character = None
 
-color = (255, 255, 255)
+    def start_the_game(self):
+        """Handle game start"""
+        if self.selected_character:
+            print(f"Starting game with character: {self.selected_character}")
+            # Here you would add your actual game logic
+        else:
+            print("Please select a character first!")
 
-color_light = (170, 170, 170)
+    def set_character(self, value, index):
+        """Handle character selection"""
+        self.selected_character = value[0]  # Store the character name
+        print(f"Character selected: {value[0]}, Index: {index}")
 
-color_dark = (100, 100, 100)
+    def add_baseimage(self, image_path, scale=(50, 50)):
+        """Load and scale an image, with error handling"""
+        try:
+            # Check if file exists
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"Image file not found: {image_path}")
 
-width = screen.get_width()
+            base_image = pygame_menu.BaseImage(
+                image_path=image_path,
+                drawing_mode=pygame_menu.baseimage.IMAGE_MODE_SIMPLE
+            )
+            base_image.resize(*scale)
+            return base_image
+        except Exception as e:
+            print(f"Error loading image {image_path}: {str(e)}")
+            # Return a colored rectangle as fallback
+            surface = pygame.Surface(scale)
+            surface.fill((255, 0, 0))  # Red rectangle as placeholder
+            return pygame_menu.BaseImage(surface)
 
-height = screen.get_height()
+    def run(self):
+        # Create menu theme
+        mytheme = pygame_menu.themes.THEME_DARK.copy()
+        mytheme.widget_font_size = 20
 
-smallfont = pygame.font.SysFont('Corbel', 35)
+        # Create the menu
+        menu = pygame_menu.Menu(
+            'Character Selection',
+            650, 300,
+            theme=mytheme
+        )
 
-text = smallfont.render('quit', True, color)
+        try:
+            # Load character images
+            characters = [
+                ('Lucario', self.add_baseimage("sprites/lucario_sprite.png")),
+                ('Zoroark', self.add_baseimage("sprites/zoroark_sprite.png")),
+                ('Zeraora', self.add_baseimage("sprites/zeraora_sprite.png")),
+                ('Mewtwo', self.add_baseimage("sprites/mewtwo_sprite.png"))
+            ]
 
-while True:
-    for ev in pygame.event.get():
-        if ev.type == pygame.QUIT:
+            # Add widgets to the menu
+            menu.add.text_input('Name :', default='Player 1', maxchar=20)
+
+            for char_name, char_image in characters:
+                menu.add.image(char_image)
+
+            menu.add.selector(
+                'Choose your character:',
+                [(char[0], char[1]) for char in characters],
+                onchange=self.set_character
+            )
+
+            menu.add.vertical_margin(30)  # Add some space
+            menu.add.button('Play', self.start_the_game)
+            menu.add.button('Quit', pygame_menu.events.EXIT)
+
+            # Main game loop
+            while True:
+                events = pygame.event.get()
+                for event in events:
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+
+                if menu.is_enabled():
+                    menu.update(events)
+                    menu.draw(self.screen)
+
+                pygame.display.flip()
+
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
             pygame.quit()
+            sys.exit()
 
-        if ev.type == pygame.MOUSEBUTTONDOWN:
 
-            if width/2 <= mouse[0] <= width/2+140 and height/2 <= mouse[1] <= height/2+40:
-                pygame.quit()
-    screen.fill((60, 25, 60))
+if __name__ == '__main__':
+    game = GameMenu()
+    game.run()
 
-    mouse = pygame.mouse.get_pos()
-
-    if width/2 <= mouse[0] <= width/2+140 and height/2 <= mouse[1] <= height/2+40:
-        pygame.draw.rect(screen, color_light, [width/2, height/2, 140, 40])
-
-    else:
-        pygame.draw.rect(screen, color_dark, [width/2, height/2, 140, 40])
-
-    screen.blit(text, (width/2+50, height/2))
-
-    pygame.display.update()
-
-if __name__ == "__main__":
-    mainFun() # Main functie oproepen
