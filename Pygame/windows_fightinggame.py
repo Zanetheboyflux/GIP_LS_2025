@@ -23,7 +23,7 @@ class GameMenu:
             pygame.quit()
 
             pygame.init()
-            stadium = Stadium()
+            stadium = Stadium(self.selected_character)
             stadium.run()
         else:
             print("Please select a character first!")

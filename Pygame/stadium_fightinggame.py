@@ -1,9 +1,22 @@
 import pygame
 from pygame.locals import *
+from Characters_fightinggame import CharacterManager
 
+def create_sprite_surface(width, height):
+    return pygame.Surface((width, height), pygame.SRCALPHA)
+
+def load_pixel_art(image_path, scale_factor=3):
+    try:
+        image = pygame.image.load(image_path)
+        width = image.get_width() * scale_factor
+        height = image.get_height() * scale_factor
+        return pygame.transform.scale(image, (width, height))
+    except Exception as e:
+        print(f"Error loading pixel art: {str(e)}")
+        return None
 
 class Stadium:
-    def __init__(self):
+    def __init__(self, selected_character=None):
         pygame.init()
         self.SCREEN_WIDTH = 1000
         self.SCREEN_HEIGHT = 1000
@@ -17,6 +30,13 @@ class Stadium:
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Fighting game stadium")
         self.clock = pygame.time.Clock()
+
+        self.character_manager = CharacterManager()
+        if selected_character:
+            sprite_path = f'sprites/{selected_character.lower()}_sprite.png'
+            sprite = load_pixel_art(sprite_path)
+            if sprite:
+                self.character_manager.set_character(selected_character)
 
     def draw_background(self):
         for y in range(self.SCREEN_HEIGHT):
@@ -59,6 +79,8 @@ class Stadium:
             self.screen.fill(self.BLACK)
             self.draw_background()
             self.draw_platform()
+
+            self.character_manager.draw(self.screen)
 
             pygame.display.flip()
             self.clock.tick(60)
