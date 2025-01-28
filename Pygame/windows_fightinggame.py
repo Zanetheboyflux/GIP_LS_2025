@@ -2,6 +2,7 @@ import pygame
 import pygame_menu
 import os
 import sys
+from stadium_fightinggame import Stadium
 
 
 class GameMenu:
@@ -11,14 +12,19 @@ class GameMenu:
         self.screen = pygame.display.set_mode(self.res)
         pygame.display.set_caption("Character Selection Menu")
 
-        # Store the selected character
         self.selected_character = None
 
     def start_the_game(self):
         """Handle game start"""
         if self.selected_character:
             print(f"Starting game with character: {self.selected_character}")
-            # Here you would add your actual game logic
+
+            pygame.display.quit()
+            pygame.quit()
+
+            pygame.init()
+            stadium = Stadium()
+            stadium.run()
         else:
             print("Please select a character first!")
 
@@ -85,18 +91,7 @@ class GameMenu:
             menu.add.button('Quit', pygame_menu.events.EXIT)
 
             # Main game loop
-            while True:
-                events = pygame.event.get()
-                for event in events:
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
-
-                if menu.is_enabled():
-                    menu.update(events)
-                    menu.draw(self.screen)
-
-                pygame.display.flip()
+            menu.mainloop(self.screen)
 
         except Exception as e:
             print(f"An error occurred: {str(e)}")
