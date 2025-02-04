@@ -30,8 +30,12 @@ class GameMenu:
 
     def set_character(self, value, index):
         """Handle character selection"""
-        self.selected_character = value[0]  # Store the character name
-        print(f"Character selected: {value[0]}, Index: {index}")
+        if isinstance(value, tuple) and len(value) > 0:
+            if isinstance(value[0], tuple):
+                self.selected_character = value[0][0]
+            else:
+                self.selected_character = value[0]
+        print(f'Character selected: {self.selected_character}, Index: {index}')
 
     def add_baseimage(self, image_path, scale=(50, 50)):
         """Load and scale an image, with error handling"""
@@ -69,7 +73,7 @@ class GameMenu:
             # Load character images
             characters = [
                 ('Lucario', self.add_baseimage("sprites/lucario_sprite.png")),
-                ('Zoroark', self.add_baseimage("sprites/zoroark_sprite.png")),
+                ('cinderace', self.add_baseimage("sprites/cinderace_sprite.png")),
                 ('Zeraora', self.add_baseimage("sprites/zeraora_sprite.png")),
                 ('Mewtwo', self.add_baseimage("sprites/mewtwo_sprite.png"))
             ]

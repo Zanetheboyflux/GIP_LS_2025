@@ -3,9 +3,10 @@ from pygame.locals import *
 from Characters_fightinggame import CharacterManager
 
 def create_sprite_surface(width, height):
-    return pygame.Surface((width, height), pygame.SRCALPHA)
+    return pygame.surface.Surface((width, height), pygame.SRCALPHA)
 
 def load_pixel_art(image_path, scale_factor=3):
+
     try:
         image = pygame.image.load(image_path)
         width = image.get_width() * scale_factor
