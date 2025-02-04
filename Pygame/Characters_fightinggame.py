@@ -1,5 +1,4 @@
 import pygame
-import os
 
 class Character:
     def __init__(self, name, x, y):
@@ -9,13 +8,24 @@ class Character:
         self.scale = (100, 100)
         self.sprite = self.load_sprite()
 
+        self.velocity_y = 0
+        self.velocity_x = 0
+        self.is_jumping = False
+        self.move_speed = 5
+        self.jump_force = -15
+        self.gravity = 0.8
+        self.ground_y = 900
+        self.on_platform = False
+
+        self.rect = pygame.Rect(x - self.scale[0]//2, y - self.scale[1], self.scale[0], self.scale[1])
+
     def load_sprite(self):
 
         character_colors = {
             'Lucario': (0, 0, 255),
             'Mewtwo': (255, 0, 255),
             'Zeraora': (255, 255, 0),
-            'Pikachu': (255, 0, 0)
+            'Cinderace': (255, 0, 0)
         }
 
         try:
@@ -31,6 +41,52 @@ class Character:
             surface.fill(color)
             return surface
 
+    def check_platform_collision(self, platforms):
+
+        self.rect.x = self.x - self.scale[0]//2
+        self.rect.y = self.y - self.scale[1]
+
+        for platform in platforms:
+            if self.rect.right >= platform.x and self.rect.left <= platform.x + platform.width:
+                if self.rect.bottom >= platform.y and self.rect.bottom <= platform.y + 20:
+                    self.y = platform.y
+                    self.velocity_y = 0
+                    self.is_jumping = False
+                    self.on_platform = True
+                    return True
+        return False
+
+    def move(self, keys, platforms):
+        #forward and backward movement
+        if keys[pygame.K_LEFT]:
+            self.x -= self.move_speed
+        elif keys[pygame.K_RIGHT]:
+            self.x += self.move_speed
+        else:
+            self.velocity_x = 0
+
+        self.x += self.velocity_x
+
+        #jumping
+        if keys[pygame.K_SPACE] and not self.is_jumping:
+            self.velocity_y = self.jump_force
+            self.is_jumping = True
+            self.on_platform = False
+
+        #gravity
+        self.velocity_y += self.gravity
+        self.y += self.velocity_y
+
+        if not self.check_platform_collision(platforms):
+            if self.y >= self.ground_y:
+                self.y = self.ground_y
+                self.velocity_y = 0
+                self.is_jumping = False
+                self.on_platform = True
+
+        #screen boundaries
+        self.x = max(50, min(self.x, 950))
+
     def draw(self, screen):
         if self.sprite:
             screen.blit(self.sprite, (self.x - self.sprite.get_width()//2,
@@ -45,6 +101,10 @@ class CharacterManager:
         character_x = 500
         character_y = 580
         self.current_character = Character(character_name, character_x, character_y)
+
+    def update(self, keys, platforms):
+        if self.current_character:
+            self.current_character.move(keys, platforms)
 
     def draw(self, screen):
         if self.current_character:

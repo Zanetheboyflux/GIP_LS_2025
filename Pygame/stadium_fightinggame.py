@@ -16,6 +16,13 @@ def load_pixel_art(image_path, scale_factor=3):
         print(f"Error loading pixel art: {str(e)}")
         return None
 
+class Platform:
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
 class Stadium:
     def __init__(self, selected_character=None):
         pygame.init()
@@ -38,6 +45,9 @@ class Stadium:
             sprite = load_pixel_art(sprite_path)
             if sprite:
                 self.character_manager.set_character(selected_character)
+
+        self.platforms = []
+        self.init_platforms()
 
     def draw_background(self):
         for y in range(self.SCREEN_HEIGHT):
@@ -70,12 +80,34 @@ class Stadium:
         pygame.draw.rect(self.screen, self.DARK_BLUE, (platform_x3, platform_y3, platform_width2, platform_height))
         pygame.draw.rect(self.screen, self.WHITE, (platform_x3, platform_y3, platform_width2, 5))
 
+    def init_platforms(self):
+        platform_width1 = 600
+        platform_height = 20
+        platform_x1 = (self.SCREEN_WIDTH - platform_width1) //2
+        platform_y1 = 600
+
+        platform_width2 = 100
+        platform_x2 = (self.SCREEN_WIDTH - platform_width2) // 2.25
+        platform_y2 = 300
+        platform_x3 = (self.SCREEN_WIDTH - platform_width2) // 1.75
+        platform_y3 = 450
+
+        self.platforms = [
+            Platform(platform_x1, platform_y1, platform_width1, platform_height),
+            Platform(platform_x2, platform_y2, platform_width2, platform_height),
+            Platform(platform_x3, platform_y3, platform_width2, platform_height)
+        ]
+
     def run(self):
         running = True
         while running:
             for event in pygame.event.get():
                 if event.type == QUIT:
                     running = False
+
+            keys = pygame.key.get_pressed()
+
+            self.character_manager.update(keys, self.platforms)
 
             self.screen.fill(self.BLACK)
             self.draw_background()
