@@ -16,6 +16,8 @@ class Character:
         self.gravity = 0.8
         self.ground_y = 900
         self.on_platform = False
+        self.is_dead = False
+        self.death_y = 700
 
         self.rect = pygame.Rect(x - self.scale[0]//2, y - self.scale[1], self.scale[0], self.scale[1])
 
@@ -56,6 +58,12 @@ class Character:
                     return True
         return False
 
+    def check_death(self):
+        if self.y > self.death_y:
+            self.is_dead = True
+            return True
+        return False
+
     def move(self, keys, platforms):
         #forward and backward movement
         if keys[pygame.K_LEFT]:
@@ -86,6 +94,8 @@ class Character:
 
         #screen boundaries
         self.x = max(50, min(self.x, 950))
+
+        self.check_death()
 
     def draw(self, screen):
         if self.sprite:

@@ -1,6 +1,7 @@
 import pygame
 from pygame.locals import *
 from Characters_fightinggame import CharacterManager
+import sys
 
 def create_sprite_surface(width, height):
     return pygame.surface.Surface((width, height), pygame.SRCALPHA)
@@ -34,6 +35,7 @@ class Stadium:
         self.GRAY = (100, 100, 100)
         self.BLUE = (50, 150, 255)
         self.DARK_BLUE = (30, 30, 120)
+        self.RED = (255, 0, 0)
 
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Fighting game stadium")
@@ -48,6 +50,23 @@ class Stadium:
 
         self.platforms = []
         self.init_platforms()
+
+        self.font = pygame.font.Font(None, 74)
+        self.small_font = pygame.font.Font(None, 36)
+
+    def draw_game_over_screen(self):
+        overlay = pygame.Surface((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
+        overlay.fill(self.BLACK)
+        overlay.set_alpha(128)
+        self.screen.blit(overlay, (0, 0))
+
+        text = self.font.render('YOU LOST', True, self.RED)
+        text_rect = text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2))
+        self.screen.blit(text, text_rect)
+
+        exit_text = self.small_font.render('Press ESC to exit', True, self.WHITE)
+        exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2 + 60))
+        self.screen.blit(exit_text, exit_rect)
 
     def draw_background(self):
         for y in range(self.SCREEN_HEIGHT):
@@ -104,9 +123,10 @@ class Stadium:
             for event in pygame.event.get():
                 if event.type == QUIT:
                     running = False
+                if event.type == KEYDOWN and event.key == K_ESCAPE:
+                    running = False
 
             keys = pygame.key.get_pressed()
-
             self.character_manager.update(keys, self.platforms)
 
             self.screen.fill(self.BLACK)
@@ -115,7 +135,11 @@ class Stadium:
 
             self.character_manager.draw(self.screen)
 
+            if self.character_manager.current_character and self.character_manager.current_character.is_dead:
+                self.draw_game_over_screen()
+
             pygame.display.flip()
             self.clock.tick(60)
 
         pygame.quit()
+        sys.exit()
