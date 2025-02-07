@@ -36,6 +36,7 @@ class Stadium:
         self.BLUE = (50, 150, 255)
         self.DARK_BLUE = (30, 30, 120)
         self.RED = (255, 0, 0)
+        self.GREEN = (0, 255, 0)
 
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Fighting game stadium")
@@ -59,6 +60,16 @@ class Stadium:
         overlay.fill(self.BLACK)
         overlay.set_alpha(128)
         self.screen.blit(overlay, (0, 0))
+
+        if self.character_manager.current_character:
+            health_text = self.small_font.render(
+                f'Final Health: {self.character_manager.current_character.current_health}%',
+                True, self.WHITE
+            )
+            health_rect = health_text.get_rect(
+                center = (self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2 - 60)
+            )
+            self.screen.blit(health_text, health_rect)
 
         text = self.font.render('YOU LOST', True, self.RED)
         text_rect = text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2))

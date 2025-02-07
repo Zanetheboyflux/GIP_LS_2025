@@ -8,6 +8,11 @@ class Character:
         self.scale = (100, 100)
         self.sprite = self.load_sprite()
 
+        self.max_health = 100
+        self.current_health = self.max_health
+        self.health_bar_width = 100
+        self.health_bar_height = 10
+
         self.velocity_y = 0
         self.velocity_x = 0
         self.is_jumping = False
@@ -58,9 +63,25 @@ class Character:
                     return True
         return False
 
+    def draw_health_bar(self, screen):
+        bar_x = self.x - self.health_bar_width // 2
+        bar_y = self.y - self.scale[1] - 20
+
+        pygame.draw.rect(screen, (255, 0, 0),
+                         (bar_x, bar_y, self.health_bar_width, self.health_bar_height))
+
+        health_width = (self.current_health / self.max_health) * self.health_bar_width
+        if health_width > 0:
+            pygame.draw.rect(screen, (0, 255, 0),
+                             (bar_x, bar_y, health_width, self.health_bar_height))
+
+        pygame.draw.rect(screen, (0, 0, 0),
+                         (bar_x, bar_y, self.health_bar_width, self.health_bar_height), 1)
+
     def check_death(self):
         if self.y > self.death_y:
             self.is_dead = True
+            self.current_health = 0
             return True
         return False
 
@@ -101,6 +122,7 @@ class Character:
         if self.sprite:
             screen.blit(self.sprite, (self.x - self.sprite.get_width()//2,
                                       self.y - self.sprite.get_height()))
+            self.draw_health_bar(screen)
 
 
 class CharacterManager:
