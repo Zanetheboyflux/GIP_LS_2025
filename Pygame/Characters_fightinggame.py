@@ -26,6 +26,27 @@ class Character:
 
         self.rect = pygame.Rect(x - self.scale[0]//2, y - self.scale[1], self.scale[0], self.scale[1])
 
+        self.last_special_attack_time = 0
+        self.special_attack_cooldown = 10000
+        self.basic_attack_damage = 10
+        self.attack_range = 150
+        self.is_attacking = False
+        self.is_special_attacking = False
+
+        if self.name == 'Lucario':
+            self.special_attack_damage = 25
+            self.attack_range = 200
+        elif self.name == 'Mewtwo':
+            self.special_attack_damage = 30
+            self.attack_range = 300
+        elif self.name == 'Zeraora':
+            self.special_attack_damage = 20
+            self.attack_range = 150
+            self.special_attack_cooldown = 2000
+        elif self.name == 'Cinderace':
+            self.special_attack_damage = 22
+            self.attack_range = 250
+
     def load_sprite(self):
 
         character_colors = {
@@ -63,6 +84,51 @@ class Character:
                     return True
         return False
 
+    def perform_basic_attack(self, other_character):
+        if other_character and not self.is_dead and not other_character.is_dead:
+            distance = abs(self.x - other_character.x)
+
+            is_target_right = other_character.x > self.x
+            if distance <= self.attack_range and self.facing_right == is_target_right:
+                other_character.take_damage(self.basic_attack_damage)
+                self.is_attacking = True
+                return True
+        return False
+
+    def perform_special_attack(self, other_character, current_time):
+        if other_character and not self.is_dead and not other_character.is_dead:
+            if current_time - self.last_special_attack_time >= self.special_attack_cooldown:
+                distance = abs(self.x - other_character.x)
+                is_target_right = other_character.x > self.x
+
+                if distance <= self.attack_range and self.facing_right == is_target_right:
+                    damage = self.special_attack_damage
+                    if self.name == 'Lucario':
+                        # Aura Sphere - More damage at lower health
+                        damage = self.special_attack_damage * (1+ (1 - self.current_health/self.max_health))
+                    elif self.name == 'Mewtwo':
+                        # Psystrike - Ignores distance penalty
+                        damage = self.special_attack_damage
+                    elif self.name == 'Zeraora':
+                        # Plasma Fists - Chain lightning effect
+                        damage = self.special_attack_damage
+                        other_character.velocity_x = 10 if is_target_right else -10
+                    elif self.name == 'Cinderace':
+                        # Pyro Ball - More damage at longer range
+                        damage = self.special_attack_damage * (1 + distance/self.attack_range)
+
+                    other_character.take_damge(damage)
+                    self.last_special_attack_time = current_time
+                    self.is_special_attacking = True
+                    return True
+        return False
+
+    def take_damage(self, damage):
+        if not self.is_dead:
+            self.current_health = max(0, self.current_health - damage)
+            if self.current_health == 0:
+                self.is_dead = True
+
     def draw_health_bar(self, screen):
         bar_x = self.x - self.health_bar_width // 2
         bar_y = self.y - self.scale[1] - 20
@@ -85,19 +151,30 @@ class Character:
             return True
         return False
 
-    def move(self, keys, platforms):
+    def move(self, keys, platforms, player_num=1):
         #forward and backward movement
-        if keys[pygame.K_LEFT]:
+        if player_num == 1:
+            left_key = pygame.K_q
+            right_key = pygame.K_d
+            jump_key = pygame.K_z
+        else:
+            left_key = pygame.K_LEFT
+            right_key = pygame.K_RIGHT
+            jump_key = pygame.K_UP
+
+        if keys[left_key]:
             self.x -= self.move_speed
-        elif keys[pygame.K_RIGHT]:
+            self.facing_right = False
+        elif keys[right_key]:
             self.x += self.move_speed
+            self.facing_right = True
         else:
             self.velocity_x = 0
 
         self.x += self.velocity_x
 
         #jumping
-        if keys[pygame.K_SPACE] and not self.is_jumping:
+        if keys[jump_key] and not self.is_jumping:
             self.velocity_y = self.jump_force
             self.is_jumping = True
             self.on_platform = False
@@ -127,17 +204,46 @@ class Character:
 
 class CharacterManager:
     def __init__(self):
-        self.current_character = None
+        self.player1 = None
+        self.player2 = None
 
-    def set_character(self, character_name):
-        character_x = 500
-        character_y = 580
-        self.current_character = Character(character_name, character_x, character_y)
+    def set_character(self, character_name, is_player1=True):
+        if is_player1:
+            self.player1 = Character(character_name, 300, 580)
+        else:
+            self.player2 = Character(character_name, 700, 580)
 
-    def update(self, keys, platforms):
-        if self.current_character:
-            self.current_character.move(keys, platforms)
+    def update(self, keys, platforms, current_time):
+
+        if self.player1:
+            self.player1.move(keys, platforms, 1)
+            if keys[pygame.K_f]:
+                self.player1.perform_basic_attack(self.player2)
+            elif keys[pygame.K_g]:
+                self.player1.perform_special_attack(self.player2, current_time)
+
+        if self.player2:
+            self.player2.move(keys, platforms, 2)
+            if keys[pygame.K_k]:
+                self.player2.perform_basic_attack(self.player1)
+            elif keys[pygame.K_l]:
+                self.player2.perform_special_attack(self.player1, current_time)
+
+            # Reset attack states
+        if self.player1:
+            if not keys[pygame.K_f]:
+                self.player1.is_attacking = False
+            if not keys[pygame.K_g]:
+                self.player1.is_special_attacking = False
+
+        if self.player2:
+            if not keys[pygame.K_k]:
+                self.player2.is_attacking = False
+            if not keys[pygame.K_l]:
+                self.player2.is_special_attacking = False
 
     def draw(self, screen):
-        if self.current_character:
-            self.current_character.draw(screen)
+        if self.player1:
+            self.player1.draw(screen)
+        if self.player2:
+            self.player2.draw(screen)

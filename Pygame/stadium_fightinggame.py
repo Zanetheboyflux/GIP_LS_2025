@@ -25,7 +25,7 @@ class Platform:
         self.height = height
 
 class Stadium:
-    def __init__(self, selected_character=None):
+    def __init__(self, player1_character, player2_character):
         pygame.init()
         self.SCREEN_WIDTH = 1000
         self.SCREEN_HEIGHT = 1000
@@ -38,16 +38,20 @@ class Stadium:
         self.RED = (255, 0, 0)
         self.GREEN = (0, 255, 0)
 
+        self.player1_character=None
+        self.player2_character=None
+        self.player1 = None
+        self.player2 = None
+
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Fighting game stadium")
         self.clock = pygame.time.Clock()
 
         self.character_manager = CharacterManager()
-        if selected_character:
-            sprite_path = f'sprites/{selected_character.lower()}_sprite.png'
-            sprite = load_pixel_art(sprite_path)
-            if sprite:
-                self.character_manager.set_character(selected_character)
+        if player1_character:
+            self.character_manager.set_character(player1_character, True)
+        if player2_character:
+            self.character_manager.set_character(player2_character, False)
 
         self.platforms = []
         self.init_platforms()
@@ -61,23 +65,21 @@ class Stadium:
         overlay.set_alpha(128)
         self.screen.blit(overlay, (0, 0))
 
-        if self.character_manager.current_character:
-            health_text = self.small_font.render(
-                f'Final Health: {self.character_manager.current_character.current_health}%',
-                True, self.WHITE
-            )
-            health_rect = health_text.get_rect(
-                center = (self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2 - 60)
-            )
-            self.screen.blit(health_text, health_rect)
+        winner_text = ""
+        if self.character_manager.player1 and self.character_manager.player2:
+            if self.character_manager.player1.is_dead:
+                winner_text = "PLAYER 2 WINS!"
+            elif self.character_manager.player2.is_dead:
+                winner_text = "PLAYER 1 WINS!"
 
-        text = self.font.render('YOU LOST', True, self.RED)
-        text_rect = text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2))
-        self.screen.blit(text, text_rect)
+        if winner_text:
+            text = self.font.render(winner_text, True, self.GREEN)
+            text_rect = text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2))
+            self.screen.blit(text, text_rect)
 
-        exit_text = self.small_font.render('Press ESC to exit', True, self.WHITE)
+        exit_text = self.small_font.render("Pres ESC to exit", True, self.WHITE)
         exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2 + 60))
-        self.screen.blit(exit_text, exit_rect)
+        self.screen.blit(exit_rect, exit_rect)
 
     def draw_background(self):
         for y in range(self.SCREEN_HEIGHT):
@@ -130,7 +132,13 @@ class Stadium:
 
     def run(self):
         running = True
+        clock = pygame.time.Clock()
         while running:
+            current_time = pygame.time.get_ticks()
+
+            pygame.display.flip()
+            clock.tick(60)
+
             for event in pygame.event.get():
                 if event.type == QUIT:
                     running = False
@@ -138,7 +146,7 @@ class Stadium:
                     running = False
 
             keys = pygame.key.get_pressed()
-            self.character_manager.update(keys, self.platforms)
+            self.character_manager.update(keys, self.platforms, current_time)
 
             self.screen.fill(self.BLACK)
             self.draw_background()
@@ -146,7 +154,8 @@ class Stadium:
 
             self.character_manager.draw(self.screen)
 
-            if self.character_manager.current_character and self.character_manager.current_character.is_dead:
+            if (self.character_manager.player1 and self.character_manager.player1.is_dead or
+                (self.character_manager.player2 and self.character_manager.player2.is_dead)):
                 self.draw_game_over_screen()
 
             pygame.display.flip()

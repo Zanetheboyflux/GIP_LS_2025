@@ -12,44 +12,46 @@ class GameMenu:
         self.screen = pygame.display.set_mode(self.res)
         pygame.display.set_caption("Character Selection Menu")
 
-        self.selected_character = None
+        self.player1_character = None
+        self.player2_character = None
 
     def start_the_game(self):
-        """Handle game start"""
-        if self.selected_character:
-            print(f"Starting game with character: {self.selected_character}")
+        if self.player1_character and self.player2_character:
+            print(f"Starting game with Player 1: {self.player1_character}, Player 2: {self.player2_character}")
 
-            pygame.display.quit()
-            pygame.quit()
-
-            pygame.init()
-            stadium = Stadium(self.selected_character)
+            stadium = Stadium(self.player1_character, self.player2_character)
             stadium.run()
         else:
-            print("Please select a character first!")
+            print("Please select characters for both players!")
 
-    def set_character(self, value, index):
-        """Handle character selection"""
-        if isinstance(value, tuple) and len(value) > 0:
-            if isinstance(value[0], tuple):
-                self.selected_character = value[0][0]
-            else:
-                self.selected_character = value[0]
-        print(f'Character selected: {self.selected_character}, Index: {index}')
+    def set_character_p1(self, selected_value, _):
+        self.player1_character = selected_value[0][0]
+        print(f'Player 1 character selected: {self.player1_character}')
+
+    def set_character_p2(self, selected_value, _):
+        self.player2_character = selected_value[0][0]
+        print(f'Player 2 character selected: {self.player2_character}')
 
     def add_baseimage(self, image_path, scale=(50, 50)):
         """Load and scale an image, with error handling"""
         try:
             # Check if file exists
             if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image file not found: {image_path}")
+                print(f"Image file not found: {image_path}")
+                # Return a colored rectangle as fallback
+                surface = pygame.Surface(scale)
+                surface.fill((255, 0, 0))  # Red rectangle as placeholder
+                return pygame_menu.BaseImage(surface)
 
-            base_image = pygame_menu.BaseImage(
-                image_path=image_path,
-                drawing_mode=pygame_menu.baseimage.IMAGE_MODE_SIMPLE
-            )
-            base_image.resize(*scale)
-            return base_image
+                # Load and convert the image
+                image = pygame.image.load(image_path).convert_alpha()
+                # Scale the image
+                scaled_image = pygame.transform.scale(image, scale)
+                # Create surface and blit the image
+                surface = pygame.Surface(scale, pygame.SRCALPHA)
+                surface.blit(scaled_image, (0, 0))
+
+                return pygame_menu.BaseImage(surface)
         except Exception as e:
             print(f"Error loading image {image_path}: {str(e)}")
             # Return a colored rectangle as fallback
@@ -65,7 +67,7 @@ class GameMenu:
         # Create the menu
         menu = pygame_menu.Menu(
             'Character Selection',
-            650, 300,
+            650, 400,
             theme=mytheme
         )
 
@@ -79,22 +81,26 @@ class GameMenu:
             ]
 
             # Add widgets to the menu
-            menu.add.text_input('Name :', default='Player 1', maxchar=20)
-
-            for char_name, char_image in characters:
-                menu.add.image(char_image)
-
+            menu.add.label('Player 1')
             menu.add.selector(
-                'Choose your character:',
+                'choose character:',
                 [(char[0], char[1]) for char in characters],
-                onchange=self.set_character
+                onchange=self.set_character_p1
             )
 
-            menu.add.vertical_margin(30)  # Add some space
+            menu.add.vertical_margin(30)
+
+            menu.add.label('Player 2')
+            menu.add.selector(
+                'Choose character:',
+                [(char[0], char[1]) for char in characters],
+                onchange=self.set_character_p2
+            )
+
+            menu.add.vertical_margin(30)
             menu.add.button('Play', self.start_the_game)
             menu.add.button('Quit', pygame_menu.events.EXIT)
 
-            # Main game loop
             menu.mainloop(self.screen)
 
         except Exception as e:
