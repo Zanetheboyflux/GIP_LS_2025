@@ -59,28 +59,6 @@ class Stadium:
         self.font = pygame.font.Font(None, 74)
         self.small_font = pygame.font.Font(None, 36)
 
-    def draw_game_over_screen(self):
-        overlay = pygame.Surface((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
-        overlay.fill(self.BLACK)
-        overlay.set_alpha(128)
-        self.screen.blit(overlay, (0, 0))
-
-        winner_text = ""
-        if self.character_manager.player1 and self.character_manager.player2:
-            if self.character_manager.player1.is_dead:
-                winner_text = "PLAYER 2 WINS!"
-            elif self.character_manager.player2.is_dead:
-                winner_text = "PLAYER 1 WINS!"
-
-        if winner_text:
-            text = self.font.render(winner_text, True, self.GREEN)
-            text_rect = text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2))
-            self.screen.blit(text, text_rect)
-
-        exit_text = self.small_font.render("Pres ESC to exit", True, self.WHITE)
-        exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2 + 60))
-        self.screen.blit(exit_rect, exit_rect)
-
     def draw_background(self):
         for y in range(self.SCREEN_HEIGHT):
             color = (
@@ -129,6 +107,27 @@ class Stadium:
             Platform(platform_x2, platform_y2, platform_width2, platform_height),
             Platform(platform_x3, platform_y3, platform_width2, platform_height)
         ]
+    def draw_game_over_screen(self):
+        overlay = pygame.Surface((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
+        overlay.fill(self.BLACK)
+        overlay.set_alpha(128)
+        self.screen.blit(overlay, (0, 0))
+
+        winner_text = ""
+        if self.character_manager.player1 and self.character_manager.player2:
+            if self.character_manager.player1.is_dead:
+                winner_text = "PLAYER 2 WINS!"
+            elif self.character_manager.player2.is_dead:
+                winner_text = "PLAYER 1 WINS!"
+
+        if winner_text:
+            text = self.font.render(winner_text, True, self.GREEN)
+            text_rect = text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2))
+            self.screen.blit(text, text_rect)
+
+        exit_text = self.small_font.render("Pres ESC to exit", True, self.WHITE)
+        exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2 + 60))
+        self.screen.blit(exit_rect, exit_rect)
 
     def run(self):
         running = True

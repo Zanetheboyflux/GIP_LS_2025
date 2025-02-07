@@ -32,6 +32,7 @@ class Character:
         self.attack_range = 150
         self.is_attacking = False
         self.is_special_attacking = False
+        self.facing_right = False
 
         if self.name == 'Lucario':
             self.special_attack_damage = 25
@@ -84,6 +85,20 @@ class Character:
                     return True
         return False
 
+    def draw_health_bar(self, screen):
+        bar_x = self.x - self.health_bar_width // 2
+        bar_y = self.y - self.scale[1] - 20
+
+        pygame.draw.rect(screen, (255, 0, 0),
+                         (bar_x, bar_y, self.health_bar_width, self.health_bar_height))
+
+        health_width = (self.current_health / self.max_health) * self.health_bar_width
+        if health_width > 0:
+            pygame.draw.rect(screen, (0, 255, 0),
+                             (bar_x, bar_y, health_width, self.health_bar_height))
+
+        pygame.draw.rect(screen, (0, 0, 0),
+                         (bar_x, bar_y, self.health_bar_width, self.health_bar_height), 1)
     def perform_basic_attack(self, other_character):
         if other_character and not self.is_dead and not other_character.is_dead:
             distance = abs(self.x - other_character.x)
@@ -117,7 +132,7 @@ class Character:
                         # Pyro Ball - More damage at longer range
                         damage = self.special_attack_damage * (1 + distance/self.attack_range)
 
-                    other_character.take_damge(damage)
+                    other_character.take_damaqge(damage)
                     self.last_special_attack_time = current_time
                     self.is_special_attacking = True
                     return True
@@ -128,21 +143,6 @@ class Character:
             self.current_health = max(0, self.current_health - damage)
             if self.current_health == 0:
                 self.is_dead = True
-
-    def draw_health_bar(self, screen):
-        bar_x = self.x - self.health_bar_width // 2
-        bar_y = self.y - self.scale[1] - 20
-
-        pygame.draw.rect(screen, (255, 0, 0),
-                         (bar_x, bar_y, self.health_bar_width, self.health_bar_height))
-
-        health_width = (self.current_health / self.max_health) * self.health_bar_width
-        if health_width > 0:
-            pygame.draw.rect(screen, (0, 255, 0),
-                             (bar_x, bar_y, health_width, self.health_bar_height))
-
-        pygame.draw.rect(screen, (0, 0, 0),
-                         (bar_x, bar_y, self.health_bar_width, self.health_bar_height), 1)
 
     def check_death(self):
         if self.y > self.death_y:
