@@ -132,7 +132,7 @@ class Character:
                         # Pyro Ball - More damage at longer range
                         damage = self.special_attack_damage * (1 + distance/self.attack_range)
 
-                    other_character.take_damaqge(damage)
+                    other_character.take_damage(damage)
                     self.last_special_attack_time = current_time
                     self.is_special_attacking = True
                     return True

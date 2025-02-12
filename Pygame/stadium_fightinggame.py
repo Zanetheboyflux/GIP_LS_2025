@@ -125,9 +125,9 @@ class Stadium:
             text_rect = text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2))
             self.screen.blit(text, text_rect)
 
-        exit_text = self.small_font.render("Pres ESC to exit", True, self.WHITE)
+        exit_text = self.small_font.render("Press ESC to exit", True, self.WHITE)
         exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2 + 60))
-        self.screen.blit(exit_rect, exit_rect)
+        self.screen.blit(exit_text, exit_rect)
 
     def run(self):
         running = True
