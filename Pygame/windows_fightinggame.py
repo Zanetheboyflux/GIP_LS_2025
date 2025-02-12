@@ -75,7 +75,7 @@ class GameMenu:
             # Load character images
             characters = [
                 ('Lucario', self.add_baseimage("sprites/lucario_sprite.png")),
-                ('cinderace', self.add_baseimage("sprites/cinderace_sprite.png")),
+                ('Cinderace', self.add_baseimage("sprites/cinderace_sprite.png")),
                 ('Zeraora', self.add_baseimage("sprites/zeraora_sprite.png")),
                 ('Mewtwo', self.add_baseimage("sprites/mewtwo_sprite.png"))
             ]
