@@ -71,18 +71,29 @@ class Character:
             return surface
 
     def check_platform_collision(self, platforms):
-
-        self.rect.x = self.x - self.scale[0]//2
+        self.rect.x = self.x - self.scale[0] // 2
         self.rect.y = self.y - self.scale[1]
 
-        for platform in platforms:
-            if self.rect.right >= platform.x and self.rect.left <= platform.x + platform.width:
-                if self.rect.bottom >= platform.y and self.rect.bottom <= platform.y + 20:
-                    self.y = platform.y
-                    self.velocity_y = 0
-                    self.is_jumping = False
-                    self.on_platform = True
-                    return True
+        if self.velocity_y > 0:
+            for platform in platforms:
+                if self.rect.right >= platform.x and self.rect.left <= platform.x + platform.width:
+                    current_bottom = self.rect.bottom
+
+                    if abs(current_bottom - platform.y) <= abs(self.velocity_y + self.gravity) + 1:
+                        self.y = platform.y
+                        self.velocity_y = 0
+                        self.is_jumping = False
+                        self.on_platform = True
+                        return True
+
+                    elif self.velocity_y > 0 and current_bottom >= platform.y and current_bottom <= platform.y + platform.height:
+                        self.y = platform.y
+                        self.velocity_y = 0
+                        self.is_jumping = False
+                        self.on_platform = True
+                        return True
+
+        self.on_platform = False
         return False
 
     def draw_health_bar(self, screen):

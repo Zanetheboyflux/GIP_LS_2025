@@ -4,9 +4,14 @@ import threading
 import time
 import pygame
 import sys
+from windows_fightinggame import GameMenu
+from stadium_fightinggame import Stadium
+from stadium_fightinggame import Platform
+from Characters_fightinggame import Character
+from Characters_fightinggame import CharacterManager
 
 
-class GameServer():
+class GameServer:
     def __init__(self, host='0.0.0.0', port=5555):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.bind((host, port))
@@ -28,7 +33,7 @@ class GameServer():
                     data = conn.recv(2048)
                     if not data:
                         break
-                    play.game_state[player_id].update(player_data)
+                    play.game_state[player_id].update(player_num)
 
                     conn.send(pickle.dumps(self.game_state))
                 except:
@@ -69,7 +74,7 @@ class NetworkClient:
     def send(self, data):
         try:
             self.client.send(pickle.dumps(data))
-            return pickle.loads(sqelf.client.recv(2048))
+            return pickle.loads(self.client.recv(2048))
         except socket.error as e:
             print(e)
 
@@ -79,14 +84,14 @@ class NetworkCharacter(Character):
         self.network_client = network_client
         self.player_num = network_client.player_num
 
-        def update_network(self):
-            data = {
-                'character': self.name,
-                'x': self.x,
-                'y': self.y,
-                'health': self.current_health,
-                'is_attacking': self.is_attacking
-            }
+    def update_network(self):
+        data = {
+            'character': self.name,
+            'x': self.x,
+            'y': self.y,
+            'health': self.current_health,
+            'is_attacking': self.is_attacking
+        }
 
         game_state = self.network_client.send(data)
 
