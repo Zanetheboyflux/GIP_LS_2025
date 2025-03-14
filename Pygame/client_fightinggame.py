@@ -14,12 +14,13 @@ class GameClient:
         self.port = port
         self.client_socket = None
         self.player_num = None
-        self.character = None
+        self.character_name = None
         self.opponent_character = None
         self.connected = False
         self.match_started = False
         self.game_over = False
         self.winner = None
+        self.character = None
 
         self.SCREEN_WIDTH = 1000
         self.SCREEN_HEIGHT = 1000
@@ -222,9 +223,11 @@ class GameClient:
         }
 
         try:
-            sprite_path = f"sprites/{character_name.lower()}_sprite.png"
-            img = pygame.image.load(sprite_path).convert_alpha()
+            sprite = f"sprites/{character_name.lower()}_sprite.png"
+            img = pygame.image.load(sprite).convert_alpha()
+            self.logger.info(f'Error making sprite for {sprite}')
             return pygame.transform.scale(img, (100, 100))
+
         except Exception as e:
             self.logger.info(f"Error loading sprite for {character_name}: {str(e)}")
 
@@ -273,8 +276,24 @@ class GameClient:
         exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH / 2, self.SCREEN_HEIGHT / 2 + 60))
         self.screen.blit(exit_text, exit_rect)
 
+    def check_on_platform(self, player_x, player_y):
+
+        if player_y >= 580:
+            return True
+
+        player_width = 50
+        player_half_width = player_width // 2
+
+        for platform in self.platforms:
+            if (player_x + player_half_width > platform.x and
+            player_x - player_half_width < platform.x + platform.width):
+                if abs(player_y - platform.y) < 10:
+                    return True
+
+        return False
+
     def run_game(self):
-        if not self.character and self.character:
+        if not self.character_sprite and self.character:
             self.character_sprite = self.create_character_sprite(self.character)
 
         if not self.opponent_sprite:
@@ -292,6 +311,11 @@ class GameClient:
         last_attack_time = 0
         last_special_attack_time = 0
         special_attack_cooldown = 3000
+        is_jumping = False
+        jump_velocity = 0
+        gravity = 1
+        jump_strength = 15
+        player_width = 50
 
         while running and self.connected:
             current_time = pygame.time.get_ticks()
@@ -353,27 +377,43 @@ class GameClient:
                         action['x'] = player_data['x']
                         action['facing_right'] = True
 
-                on_platform = False
-                player_feet_y = player_data.get('y', 0)
-                player_width = 50
+                on_platform = self.check_on_platform(player_data.get('x', 0), player_data.get('y', 0))
 
-                if player_feet_y >= 580:
+                if player_data.get('y', 0) >= 580:
                     on_platform = True
 
                 if not on_platform:
                     for platform in self.platforms:
                         if (player_data.get('x', 0) + player_width > platform.x and
-                        player_data.get('x', 0) - player_width < platform.x / platform.width and
-                        abs(player_feet_y - platform.y) <10):
+                        player_data.get('x', 0) - player_width < platform.x + platform.width and
+                        abs(player_data.get('y', 0) - platform.y) <10):
                             on_platform = True
                             break
 
-                if keys[jump_key] and on_platform:
-                    player_data['y'] = player_data['y'] - 15
+                if keys[jump_key] and on_platform and not is_jumping:
+                    is_jumping = True
+                    jump_velocity = -jump_strength
+
+                if is_jumping or not on_platform:
+                    player_data['y'] += jump_velocity
+                    jump_velocity += gravity
                     action['y'] = player_data['y']
-                elif not on_platform:
-                    player_data['y'] = min(580, player_data['y'] + 5)
-                    action['y'] = player_data['y']
+
+                    if self.check_on_platform(player_data.get('x', 0), player_data.get('y', 0)) and jump_velocity > 0:
+                        is_jumping = False
+                        jump_velocity = 0
+
+                        for platform in self.platforms:
+                            if (player_data.get('x', 0) + 50 > platform.x and
+                            player_data.get('x', 0) - 50 < platform.x + platform.width and
+                            abs(player_data.get('y', 0) - platform.y)<15):
+                                player_data['y'] = platform.y
+                                action['y'] = platform.y
+                                break
+
+                        if player_data.get('y', 0) > 580:
+                            player_data['y'] = 580
+                            action['y'] = 580
 
                 if keys[attack_key] and current_time - last_attack_time > 500:
                     action['is_attacking'] = True
