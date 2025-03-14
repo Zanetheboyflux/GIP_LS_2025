@@ -107,6 +107,7 @@ class Stadium:
             Platform(platform_x2, platform_y2, platform_width2, platform_height),
             Platform(platform_x3, platform_y3, platform_width2, platform_height)
         ]
+
     def draw_game_over_screen(self):
         overlay = pygame.Surface((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         overlay.fill(self.BLACK)
