@@ -9,7 +9,12 @@ from pygame.locals import *
 
 class GameClient:
     def __init__(self, host='localhost', port=5555):
+        logging.basicConfig(level=logging.INFO,
+                            format='%(asctime)s [CLIENT] %(message)s',
+                            datefmt='%H:%M:%S')
+        self.logger = logging.getLogger('GameClient')
         pygame.init()
+
         self.host = host
         self.port = port
         self.client_socket = None
@@ -19,18 +24,14 @@ class GameClient:
         self.connected = False
         self.match_started = False
         self.game_over = False
-        self.winner = None
         self.character = None
+        self.winner = None
 
         self.SCREEN_WIDTH = 1000
         self.SCREEN_HEIGHT = 1000
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Pokemon Fighting Game - Client")
         self.clock = pygame.time.Clock()
-        logging.basicConfig(level=logging.INFO,
-                            format='%(asctime)s [CLIENT] %(message)s',
-                            datefmt='%H:%M:%S')
-        self.logger = logging.getLogger('GameClient')
 
         self.WHITE = (255, 255, 255)
         self.BLACK = (0, 0, 0)
@@ -44,8 +45,8 @@ class GameClient:
         self.small_font = pygame.font.Font(None, 36)
 
         self.game_state = {
-            'players': {},
-            'platforms': []
+            'players':{},
+            'platforms':[]
         }
         self.platforms = []
         self.ready = False
@@ -56,10 +57,14 @@ class GameClient:
         self.character_sprite = None
         self.opponent_sprite = None
 
+        self.heartbeat_thread = None
+
     def connect_to_server(self):
         try:
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client_socket.settimeout(5)
             self.client_socket.connect((self.host, self.port))
+            self.client_socket.settimeout(None)
 
             data = self.client_socket.recv(4096)
             response = pickle.loads(data)
@@ -68,32 +73,67 @@ class GameClient:
                 self.player_num = response['player_num']
                 self.connected = True
                 self.logger.info(f'Connected to server as Player {self.player_num}')
+
+                self.heartbeat_thread = threading.Thread(target=self.check_server_heartbeat)
+                self.heartbeat_thread.daemon = True
+                self.heartbeat_thread.start()
+
                 receive_thread = threading.Thread(target=self.receive_data)
                 receive_thread.daemon = True
                 receive_thread.start()
                 return True
             else:
                 self.logger.info(f'Failed to connect: {response.get('message', 'Unknown error')}')
+                self.server_error = True
+                self.error_message = response.get("message", "Failed to connect to server")
                 return False
+
+        except socket.timeout:
+            self.logger.info("Connection timout: Server not responding")
+            self.server_error = True
+            self.error_message = "Connection timeout: Server not responding"
+            return False
+
         except Exception as e:
             self.logger.info(f'Error connection to server: {str(e)}')
+            self.server_error = True
+            self.error_message = f"Connection error: {str(e)}"
             return False
+
+    def check_server_heartbeat(self):
+        while self.connected:
+            if time.time() - self.last_server_response > self.heartbeat_timeout:
+                self.logger.info("Server heartbeat timeout - no response")
+                self.server_error = True
+                self.error_message = "Server connection lost: No response"
+                self.connected = False
+            time.sleep(1)
 
     def receive_data(self):
         while self.connected:
             try:
                 data = self.client_socket.recv(4096)
                 if not data:
+                    self.logger.info("Empty data received from server - disconnected")
+                    self.server_error = True
+                    self.error_message = "Server disconnected"
+                    self.connected = False
                     break
+                self.last_server_response = time.time()
                 response = pickle.loads(data)
+
                 if 'status' in response:
                     if response['status'] == 'match_start':
                         self.match_started = True
-                        self.game_state = response['game_state']
+                        self.game_state = response['Game_state']
                         self.init_platforms()
                     elif response['status'] == 'game_over':
                         self.game_over = True
                         self.winner = response['winner']
+                    elif response['status'] == 'server_error':
+                        self.server_error = True
+                        self.error_message = response.get('message', "Server reported an error")
+                        self.logger.info(f'Server error: {self.error_message}')
                 else:
                     self.game_state = response
 
@@ -103,9 +143,17 @@ class GameClient:
                 not self.opponent_character):
                     self.opponent_character = self.game_state['players'][opponent_num]['character']
                     self.opponent_sprite = self.create_character_sprite(self.opponent_character)
+            except (socket.error, ConnectionResetError, ConnectionAbortedError) as e:
+                self.logger.info(f'socket connection error: {str(e)}')
+                self.server_error = True
+                self.error_message = f'Server connection lost: {str(e)}'
+                self.connected = False
+                break
 
             except Exception as e:
                 self.logger.info(f'Error receiving data: {str(e)}')
+                self.server_error = True
+                self.error_message = f'Error processing server data: {str(e)}'
                 self.connected = False
                 break
 
@@ -115,7 +163,50 @@ class GameClient:
                 self.client_socket.send(pickle.dumps(data))
         except Exception as e:
             self.logger.info(f'Error sending data: {str(e)}')
+            self.server_error = True
+            self.error_message = f'Cannot send data to server: {str(e)}'
             self.connected = False
+
+    def draw_error_popup(self):
+        overlay = pygame.Surface((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
+        overlay.fill(self.BLACK)
+        overlay.set_alpha(180)
+        self.screen.blit(overlay, (0, 0))
+
+        popup_width, popup_height = 700, 300
+        popup_x = (self.SCREEN_WIDTH - popup_width) // 2
+        popup_y = (self.SCREEN_HEIGHT - popup_height) // 2
+
+        pygame.draw.rect(self.screen, self.DARK_BLUE,
+                         (popup_x, popup_y, popup_width, popup_height))
+        pygame.draw.rect(self.screen, self.RED,
+                         (popup_x, popup_y, popup_width, popup_height), 4)
+
+        title_text = self.font.render("SERVER ERROR", True, self.RED)
+        title_rect = title_text.get_rect(center=(self.SCREEN_WIDTH //2, popup_y + 60))
+        self.screen.blit(title_text, title_rect)
+
+        error_lines = []
+        words = self.error_message.split()
+        line = ""
+        for word in words:
+            test_line = line + " " + word if line else word
+            if self.small_font.size(test_line)[0] <= popup_width - 40:
+                line = test_line
+            else:
+                error_lines.append(line)
+                line = word
+        if line:
+            error_lines.append(line)
+
+        for i, line in enumerate(error_lines):
+            msg_text = self.small_font.render(line, True, self.WHITE)
+            msg_rect = msg_text.get_rect(center=(self.SCREEN_WIDTH // 2, popup_y + 120 + i * 30))
+            self.screen.blit(msg_text, msg_rect)
+
+        exit_text = self.small_font.render("Press ESC to exit", True, self.YELLOW)
+        exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH // 2, popup_y + popup_height - 50))
+        self.screen.blit(exit_text, exit_rect)
 
     def select_character(self):
         selecting = True
@@ -132,10 +223,14 @@ class GameClient:
                 char_text = self.small_font.render(char_name, True, color)
                 char_rect = char_text.get_rect(center=(self.SCREEN_WIDTH/2, 300 + i*50))
                 self.screen.blit(char_text, char_rect)
-
             instr_text = self.small_font.render('Press UP/DOWN to select, ENTER to confirm', True, self.WHITE)
             instr_rect = instr_text.get_rect(center=(self.SCREEN_WIDTH/2, 600))
             self.screen.blit(instr_text, instr_rect)
+
+            if self.server_error:
+                self.draw_error_popup()
+
+
             for event in pygame.event.get():
                 if event.type == QUIT:
                     pygame.quit()
@@ -149,21 +244,20 @@ class GameClient:
                         self.character = self.available_characters[self.selected_character_index]
                         self.send_data({'character_select': self.character})
                         selecting = False
-                pygame.display.flip()
-                self.clock.tick(60)
+            pygame.display.flip()
+            self.clock.tick(60)
 
     def wait_for_match(self):
         waiting = True
         while waiting and self.connected and not self.match_started:
             self.screen.fill(self.BLACK)
-
-            wait_text = self.font.render('Waiting for opponent...', True, self.WHITE)
+            wait_text = self.font.render('Waiting for opponent...', True, (self.WHITE))
             wait_rect = wait_text.get_rect(center=(self.SCREEN_WIDTH/2, 300))
             self.screen.blit(wait_text, wait_rect)
 
             char_text = self.small_font.render(f'Your character: {self.character}', True, self.GREEN)
             char_rect = char_text.get_rect(center=(self.SCREEN_WIDTH/2, 400))
-            self.screen.blit(char_text, char_rect)
+            self.screen.blit(ready_text, ready_rect)
 
             if not self.ready:
                 ready_text = self.small_font.render('Press SPACE to ready up', True, self.WHITE)
@@ -174,28 +268,23 @@ class GameClient:
                 ready_rect = ready_text.get_rect(center=(self.SCREEN_WIDTH/2, 500))
                 self.screen.blit(ready_text, ready_rect)
 
+            if self.server_error:
+                self.draw_error_popup()
+
             for event in pygame.event.get():
-                if event.type == QUIT:
+                if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-
-                if event.type == KEYDOWN and event.key == K_SPACE and not self.ready:
-                    self.ready = True
-                    self.send_data({'ready': True})
+                if event.type == pygame.KEYDOWN:
+                    if event.key == K_ESCAPE and self.server_error:
+                        pygame.quit()
+                        sys.exit()
+                    if event.key == K_ESCAPE and not self.ready and not self.server_error:
+                        self.ready = True
+                        self.send_data({'ready': True})
 
             pygame.display.flip()
             self.clock.tick(60)
-
-    def init_platforms(self):
-        if 'platforms' in self.game_state:
-            self.platforms = []
-            for platform_data in self.game_state['platforms']:
-                platform = type('Platform', (), {})
-                platform.x = platform_data['x']
-                platform.y = platform_data['y']
-                platform.width = platform_data['width']
-                platform.height = platform_data['height']
-                self.platforms.append(platform)
 
     def draw_background(self):
         for y in range(self.SCREEN_HEIGHT):
@@ -225,7 +314,6 @@ class GameClient:
         try:
             sprite = f"sprites/{character_name.lower()}_sprite.png"
             img = pygame.image.load(sprite).convert_alpha()
-            self.logger.info(f'Error making sprite for {sprite}')
             return pygame.transform.scale(img, (100, 100))
 
         except Exception as e:
@@ -276,23 +364,31 @@ class GameClient:
         exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH / 2, self.SCREEN_HEIGHT / 2 + 60))
         self.screen.blit(exit_text, exit_rect)
 
-    def check_on_platform(self, player_x, player_y):
-
-        if player_y >= 580:
-            return True
+    def check_on_platform(self, player_x, player_y, feet_offset):
+        if len(self.platforms) == 0:
+            self.logger.info('Warning: No platform available')
+            return True, None
 
         player_width = 50
-        player_half_width = player_width // 2
+        player_feet_y = player_y + feet_offset
 
         for platform in self.platforms:
-            if (player_x + player_half_width > platform.x and
-            player_x - player_half_width < platform.x + platform.width):
-                if abs(player_y - platform.y) < 10:
-                    return True
+            if (player_x + player_width > platform.x and
+            player_x - player_width < platform.x + platform.width):
+                if (platform.y - 15 <= player_feet_y <= platform.y + 10):
+                    return True, platform.y
 
-        return False
+        return False, None
+
+    def check_death(self, player_y):
+        if len(self.platforms) == 0:
+            return False
+        lowest_platform_y = max(platform.y for platform in self.platforms)
+        return player_y > lowest_platform_y
 
     def run_game(self):
+        current_time = pygame.time.get_ticks()
+
         if not self.character_sprite and self.character:
             self.character_sprite = self.create_character_sprite(self.character)
 
@@ -313,9 +409,11 @@ class GameClient:
         special_attack_cooldown = 3000
         is_jumping = False
         jump_velocity = 0
-        gravity = 1
-        jump_strength = 15
+        gravity = 0.8
+        jump_strength = 18
         player_width = 50
+        player_feet_offset = 10
+        player_data = None
 
         while running and self.connected:
             current_time = pygame.time.get_ticks()
@@ -332,7 +430,16 @@ class GameClient:
             self.draw_background()
             self.draw_platforms()
 
-            if self.game_over:
+            if self.server_error:
+                if self.player_num in self.game_state['players']:
+                    self.draw_character(self.game_state['players'][self.player_num], self.character_sprite)
+
+                opponent_num = 2 if self.player_num == 1 else 1
+                if opponent_num in self.game_state['players']:
+                    self.draw_character(self.game_state['players'][opponent_num], self.opponent_sprite)
+
+                self.draw_error_popup()
+            elif self.game_over:
                 if self.player_num in self.game_state['players']:
                     self.draw_character(self.game_state['players'][self.player_num], self.character_sprite)
 
@@ -377,43 +484,42 @@ class GameClient:
                         action['x'] = player_data['x']
                         action['facing_right'] = True
 
-                on_platform = self.check_on_platform(player_data.get('x', 0), player_data.get('y', 0))
-
-                if player_data.get('y', 0) >= 580:
-                    on_platform = True
-
-                if not on_platform:
-                    for platform in self.platforms:
-                        if (player_data.get('x', 0) + player_width > platform.x and
-                        player_data.get('x', 0) - player_width < platform.x + platform.width and
-                        abs(player_data.get('y', 0) - platform.y) <10):
-                            on_platform = True
-                            break
+                on_platform, platform_y = self.check_on_platform(
+                    player_data.get('x', 0),
+                    player_data.get('y', 0),
+                    player_feet_offset
+                )
 
                 if keys[jump_key] and on_platform and not is_jumping:
                     is_jumping = True
                     jump_velocity = -jump_strength
+                    action['is_jumping'] = True
 
                 if is_jumping or not on_platform:
                     player_data['y'] += jump_velocity
                     jump_velocity += gravity
                     action['y'] = player_data['y']
 
-                    if self.check_on_platform(player_data.get('x', 0), player_data.get('y', 0)) and jump_velocity > 0:
-                        is_jumping = False
-                        jump_velocity = 0
+                on_platform_now, landing_y = self.check_on_platform(
+                    player_data.get('x', 0),
+                    player_data.get('y', 0),
+                    player_feet_offset
+                )
 
-                        for platform in self.platforms:
-                            if (player_data.get('x', 0) + 50 > platform.x and
-                            player_data.get('x', 0) - 50 < platform.x + platform.width and
-                            abs(player_data.get('y', 0) - platform.y)<15):
-                                player_data['y'] = platform.y
-                                action['y'] = platform.y
-                                break
+                if not on_platform:
+                    player_data['y'] += gravity
 
-                        if player_data.get('y', 0) > 580:
-                            player_data['y'] = 580
-                            action['y'] = 580
+                if on_platform_now and jump_velocity > 0:
+                    is_jumping = False
+                    jump_velocity = 0
+                    player_data['y'] = landing_y
+                    action['y'] = landing_y
+                    action['is_jumping'] = False
+
+                if self.check_death(player_data.get('y', 0)):
+                    action['died'] = True
+                    self.send_data({'player_died': True})
+                    self.game_over = True
 
                 if keys[attack_key] and current_time - last_attack_time > 500:
                     action['is_attacking'] = True
@@ -470,6 +576,17 @@ class GameClient:
                 self.client_socket.close()
         else:
             self.logger.info('Failed to connect to server')
+            running = True
+            while running:
+                self.screen.fill(self.BLACK)
+                self.draw_error_popup()
+
+                for event in pygame.event.get():
+                    if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+                        running = False
+                pygame.display.flip()
+                self.clock.tick(60)
+                
             pygame.quit()
             sys.exit()
 
