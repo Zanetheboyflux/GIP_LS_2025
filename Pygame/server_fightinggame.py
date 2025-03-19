@@ -79,12 +79,24 @@ class GameServer:
             self.close_server()
 
     def handle_client(self, client_socket, player_num):
+
+        heartbeat_thread = threading.Thread(target=self.send_heartbeats, args=(client_socket, player_num))
+        heartbeat_thread.daemon = True
+        heartbeat_thread.start()
+
         try:
             while True:
                 data = client_socket.recv(4096)
                 if not data:
                     break
                 client_data = pickle.loads(data)
+
+                if 'player_action' in client_data:
+                    action = client_data['player_action']
+                    self.process_action(player_num, action)
+
+                    if 'attack' in action and action['attack']:
+                        self.handle_attack(player_num, action)
 
                 if 'character_select' in client_data:
                     self.game_state['players'][player_num]['character']= client_data['character_select']
@@ -98,10 +110,47 @@ class GameServer:
                     action = client_data['player_action']
                     player = self.game_state['players'][player_num]
 
+                if 'player_died' in client_data and client_data['player_died']:
+                    self.game_state['players'][player_num]['is_dead'] = True
+                    self.logger.info(f'Player {player_num} died!')
+
         except Exception as e:
             self.logger.info(f'Error handling client {player_num}:{str(e)}')
+            try:
+                error_msg = {'status': 'server_error', 'message': f'Server error: {str(e)}'}
+                client_socket.send(pickle.dumps(error_msg))
+            except:
+                pass
         finally:
-            serverself.handle_disconnect(player_num)
+            self.handle_disconnect(player_num)
+
+    def send_heartbeats(self, client_socket, player_num):
+        while player_num in self.clients:
+            try:
+                client_socket.send(pickle.dumps({'status': 'heartbeat'}))
+                time.sleep(1)
+            except Exception as e:
+                self.logger.info(f'Heartbeat failed for player{player_num}: {str(e)}')
+                break
+
+    def handle_attack(self, attacker_num, action):
+        if not self.match_started:
+            return
+
+        attacker = self.game_state['players'][attacker_num]
+        defender_num = 1 if attacker_num == 2 else 2
+
+        if defender_num in self.game_state['players']:
+            defender = self.game_state['players'][defender_num]
+
+            distance = abs(attacker['x'] - defender['x'])
+            if distance <= action.get('attack_range', 100):
+                damage = action.get('damage', 10)
+                defender['health'] = max(0, defender['health'] - damage)
+
+                if defender['health'] <= 0:
+                    defender['is_dead'] = True
+                    self.logger.info(f'Player {defender_num} defeated!')
 
     def process_action(self, player_num, action):
         player = self.game_state['players'][player_num]
@@ -126,9 +175,13 @@ class GameServer:
                 self.logger.error(f'Error sending game state: {str(e)}')
 
     def handle_disconnect(self, player_num):
-        print(f'[SERVER] Player {player_num} disconnected')
+        self.logger.info(f'Player {player_num} disconnected')
         if player_num in self.clients:
             try:
+                self.clients[player_num].send(pickle.dumps({
+                    'status': 'server_error',
+                    'message': 'Server disconnection occurred'
+                }))
                 self.clients[player_num].close()
             except Exception:
                 pass
@@ -136,6 +189,16 @@ class GameServer:
 
         if player_num in self.game_state['players']:
             self.game_state['players'][player_num]['connected'] = False
+
+        other_player = 1 if player_num == 2 else 2
+        if other_player in self.clients:
+            try:
+                self.clients[other_player].send(pickle.dumps({
+                    'status': 'server_error',
+                    'message': f'Player {player_num} disconnected'
+                }))
+            except Exception:
+                pass
 
         if self.match_started:
             self.match_started = False
@@ -155,6 +218,7 @@ class GameServer:
                     }))
 
             if self.match_started:
+                self.broadcast_game_state()
                 game_over = False
                 winner = None
 

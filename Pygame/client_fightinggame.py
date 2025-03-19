@@ -40,6 +40,7 @@ class GameClient:
         self.DARK_BLUE = (30, 30, 120)
         self.RED = (255, 0, 0)
         self.GREEN = (0, 255, 0)
+        self.YELLOW = (255, 255, 0)
 
         self.font = pygame.font.Font(None, 74)
         self.small_font = pygame.font.Font(None, 36)
@@ -58,6 +59,10 @@ class GameClient:
         self.opponent_sprite = None
 
         self.heartbeat_thread = None
+        self.last_server_response = time.time()
+        self.heartbeat_timeout = 1000
+        self.server_error = False
+        self.error_message = None
 
     def connect_to_server(self):
         try:
@@ -89,7 +94,7 @@ class GameClient:
                 return False
 
         except socket.timeout:
-            self.logger.info("Connection timout: Server not responding")
+            self.logger.info("Connection timeout: Server not responding")
             self.server_error = True
             self.error_message = "Connection timeout: Server not responding"
             return False
@@ -125,7 +130,7 @@ class GameClient:
                 if 'status' in response:
                     if response['status'] == 'match_start':
                         self.match_started = True
-                        self.game_state = response['Game_state']
+                        self.game_state = response['game_state']
                         self.init_platforms()
                     elif response['status'] == 'game_over':
                         self.game_over = True
@@ -134,13 +139,15 @@ class GameClient:
                         self.server_error = True
                         self.error_message = response.get('message', "Server reported an error")
                         self.logger.info(f'Server error: {self.error_message}')
+                    elif response['status'] == 'heartbeat':
+                        pass
                 else:
                     self.game_state = response
 
                 opponent_num = 2 if self.player_num == 1 else 1
                 if (opponent_num in self.game_state['players'] and
-                self.game_state['players'][opponent_num]['character'] and
-                not self.opponent_character):
+                    self.game_state['players'][opponent_num].get('character') and
+                    not self.opponent_character):
                     self.opponent_character = self.game_state['players'][opponent_num]['character']
                     self.opponent_sprite = self.create_character_sprite(self.opponent_character)
             except (socket.error, ConnectionResetError, ConnectionAbortedError) as e:
@@ -230,7 +237,6 @@ class GameClient:
             if self.server_error:
                 self.draw_error_popup()
 
-
             for event in pygame.event.get():
                 if event.type == QUIT:
                     pygame.quit()
@@ -257,7 +263,7 @@ class GameClient:
 
             char_text = self.small_font.render(f'Your character: {self.character}', True, self.GREEN)
             char_rect = char_text.get_rect(center=(self.SCREEN_WIDTH/2, 400))
-            self.screen.blit(ready_text, ready_rect)
+            self.screen.blit(char_text, char_rect)
 
             if not self.ready:
                 ready_text = self.small_font.render('Press SPACE to ready up', True, self.WHITE)
@@ -279,7 +285,7 @@ class GameClient:
                     if event.key == K_ESCAPE and self.server_error:
                         pygame.quit()
                         sys.exit()
-                    if event.key == K_ESCAPE and not self.ready and not self.server_error:
+                    if event.key == K_SPACE and not self.ready and not self.server_error:
                         self.ready = True
                         self.send_data({'ready': True})
 
@@ -297,6 +303,12 @@ class GameClient:
 
         pygame.draw.polygon(self.screen, self.GRAY, [(0, self.SCREEN_HEIGHT), (300, 500), (500, self.SCREEN_HEIGHT)])
         pygame.draw.polygon(self.screen, self.GRAY, [(500, self.SCREEN_HEIGHT), (700, 400), (900, self.SCREEN_HEIGHT)])
+
+    def init_platforms(self):
+        self.platforms = []
+        for platform_data in self.game_state['platforms']:
+            platform = type('Platform', (), platform_data)
+            self.platforms.append(platform)
 
     def draw_platforms(self):
         for platform in self.platforms:
@@ -415,41 +427,35 @@ class GameClient:
         player_feet_offset = 10
         player_data = None
 
-        while running and self.connected:
-            current_time = pygame.time.get_ticks()
-
+        while running:
             for event in pygame.event.get():
                 if event.type == QUIT:
                     running = False
                     pygame.quit()
                     sys.exit()
                 if event.type == KEYDOWN and event.key == K_ESCAPE:
-                    running = False
+                    if self.server_error or self.game_over:
+                        running = False
+                        pygame.quit()
+                        sys.exit()
 
             self.screen.fill(self.BLACK)
             self.draw_background()
             self.draw_platforms()
 
+            if self.player_num in self.game_state['players']:
+                self.draw_character(self.game_state['players'][self.player_num], self.character_sprite)
+
+            opponent_num = 2 if self.player_num == 1 else 1
+            if opponent_num in self.game_state['players']:
+                self.draw_character(self.game_state['players'][opponent_num], self.opponent_sprite)
+
             if self.server_error:
-                if self.player_num in self.game_state['players']:
-                    self.draw_character(self.game_state['players'][self.player_num], self.character_sprite)
-
-                opponent_num = 2 if self.player_num == 1 else 1
-                if opponent_num in self.game_state['players']:
-                    self.draw_character(self.game_state['players'][opponent_num], self.opponent_sprite)
-
                 self.draw_error_popup()
             elif self.game_over:
-                if self.player_num in self.game_state['players']:
-                    self.draw_character(self.game_state['players'][self.player_num], self.character_sprite)
-
-                opponent_num = 2 if self.player_num == 1 else 1
-                if opponent_num in self.game_state['players']:
-                    self.draw_character(self.game_state['players'][opponent_num], self.opponent_sprite)
-
                 self.draw_game_over_screen()
-
-            elif self.match_started:
+            elif self.match_started and self.connected:
+                current_time = pygame.time.get_ticks()
                 keys = pygame.key.get_pressed()
 
                 if self.player_num not in self.game_state['players']:
@@ -552,15 +558,8 @@ class GameClient:
 
                     last_special_attack_time = current_time
 
-                if action:
+                if action and self.connected:
                     self.send_data({'player_action': action})
-
-                if self.player_num in self.game_state['players']:
-                    self.draw_character(self.game_state['players'][self.player_num], self.character_sprite)
-
-                opponent_num = 2 if self.player_num == 1 else 1
-                if opponent_num in self.game_state['players']:
-                    self.draw_character(self.game_state['players'][opponent_num], self.opponent_sprite)
 
             pygame.display.flip()
             self.clock.tick(60)
@@ -576,6 +575,9 @@ class GameClient:
                 self.client_socket.close()
         else:
             self.logger.info('Failed to connect to server')
+            self.server_error = True
+            self.error_message = 'Failed to connect to server'
+
             running = True
             while running:
                 self.screen.fill(self.BLACK)
