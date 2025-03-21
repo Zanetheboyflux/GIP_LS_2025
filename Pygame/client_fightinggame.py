@@ -383,10 +383,16 @@ class GameClient:
 
         player_width = 50
         player_feet_y = player_y + feet_offset
+        player_prev_feet_y = player_feet_y - (self.game_state['players'][self.player_num].get('velocity_y', 0) if self.player_num in self.game_state['players'] else 0)
 
         for platform in self.platforms:
             if (player_x + player_width > platform.x and
             player_x - player_width < platform.x + platform.width):
+                if (player_prev_feet_y <= platform.y and
+                    player_feet_y >= platform.y and
+                    player_feet_y <= platform.y + 15):
+                    return True, platform.y
+
                 if (platform.y - 15 <= player_feet_y <= platform.y + 10):
                     return True, platform.y
 
@@ -396,7 +402,7 @@ class GameClient:
         if len(self.platforms) == 0:
             return False
         lowest_platform_y = max(platform.y for platform in self.platforms)
-        return player_y > lowest_platform_y
+        return player_y > lowest_platform_y + 100
 
     def run_game(self):
         current_time = pygame.time.get_ticks()
@@ -463,6 +469,9 @@ class GameClient:
 
                 player_data = self.game_state['players'][self.player_num]
 
+                if 'velocity_y' not in player_data:
+                    player_data['velocity_y'] = 0
+
                 action = {}
 
                 if self.player_num == 1:
@@ -498,13 +507,17 @@ class GameClient:
 
                 if keys[jump_key] and on_platform and not is_jumping:
                     is_jumping = True
+                    player_data['velocity_y'] = -jump_strength
                     jump_velocity = -jump_strength
                     action['is_jumping'] = True
+                    action['velocity'] = player_data['velocity_y']
 
                 if is_jumping or not on_platform:
                     player_data['y'] += jump_velocity
                     jump_velocity += gravity
+                    player_data['velocity_y'] = jump_velocity
                     action['y'] = player_data['y']
+                    action['velocity_y'] = player_data['velocity_y']
 
                 on_platform_now, landing_y = self.check_on_platform(
                     player_data.get('x', 0),
@@ -514,13 +527,17 @@ class GameClient:
 
                 if not on_platform:
                     player_data['y'] += gravity
+                    player_data['velocity_y'] = player_data['velocity_y']
+                    action['velocity_y'] = player_data['velocity_y']
 
                 if on_platform_now and jump_velocity > 0:
                     is_jumping = False
                     jump_velocity = 0
+                    player_data['velocity_y'] = 0
                     player_data['y'] = landing_y
                     action['y'] = landing_y
                     action['is_jumping'] = False
+                    action['velocity_y'] = 0
 
                 if self.check_death(player_data.get('y', 0)):
                     action['died'] = True

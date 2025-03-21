@@ -174,6 +174,7 @@ class GameServer:
             except Exception as e:
                 self.logger.error(f'Error sending game state: {str(e)}')
 
+
     def handle_disconnect(self, player_num):
         self.logger.info(f'Player {player_num} disconnected')
         if player_num in self.clients:
