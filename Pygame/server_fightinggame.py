@@ -3,6 +3,14 @@ import pickle
 import threading
 import time
 import logging
+import argparse
+import fightinggame_database_file as db_handler
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Pokemon Fighting Game Server')
+    parser.add_argument('--port', '-p', type=int, default=5555,
+                        help='Port to listen on')
+    return parser.parse_args()
 
 class GameServer:
     def __init__(self, host='0.0.0.0', port=5555):
@@ -21,10 +29,13 @@ class GameServer:
             'players': {},
             'ready': 0
         }
+
         self.match_started = False
         self.platforms = []
         self.init_platforms()
-        self.logger.info(f'Initializing server on {host}:{port}')
+        self.logger.info(f'Initializing cd  cd server on {host}:{port}')
+
+        self.db_handler = db_handler.integrate_with_server(self)
 
     def init_platforms(self):
         self.platforms = [
@@ -257,7 +268,8 @@ class GameServer:
         self.server_socket.close()
 
 if __name__ == "__main__":
-    server = GameServer()
+    args = parse_arguments()
+    server = GameServer(port=args.port)
     try:
         server.start()
     except KeyboardInterrupt:
