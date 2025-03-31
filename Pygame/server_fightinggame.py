@@ -297,7 +297,7 @@ def main():
         server.create_login_popup()
 
     except KeyboardInterrupt:
-        server.logger.infp('Server stopped by user')
+        server.logger.info('Server stopped by user')
         server.close_server()
 
 if __name__ == "__main__":
