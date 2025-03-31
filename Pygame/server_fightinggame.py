@@ -5,6 +5,7 @@ import time
 import logging
 import argparse
 import fightinggame_database_file as db_handler
+from login_popup import LoginPopup
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Pokemon Fighting Game Server')
@@ -36,8 +37,6 @@ class GameServer:
         self.logger.info(f'Initializing server on {host}:{port}')
 
         self.db_handler = db_handler.integrate_with_server(self)
-
-        self.login_popup = None
 
     def init_platforms(self):
         self.platforms = [

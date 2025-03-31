@@ -73,6 +73,9 @@ class GameClient:
         self.server_error = False
         self.error_message = None
 
+        self.player_name = None
+        self.game_state = "Login"
+
     def connect_to_server(self):
         try:
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -223,51 +226,6 @@ class GameClient:
         exit_text = self.small_font.render("Press ESC to exit", True, self.YELLOW)
         exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH // 2, popup_y + popup_height - 50))
         self.screen.blit(exit_text, exit_rect)
-
-    def login_success_handler(self, user_data):
-        self.logger.info(f"User logged in: {user_data['account_name']}")
-        self.start()
-
-    def create_login_popup(self):
-        if not pygame.get_init():
-            pygame.init()
-
-        if not hasattr(self, 'window_surface'):
-            self.window_surface = pygame.display.set_mode((800, 600))
-            pygame.display.set_caption('Login screen')
-
-        if not hasattr(self, 'ui_manager'):
-            self.ui_manager = pygame_gui.UIManager((800, 600))
-
-        login_btn = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(350, 250, 100, 50),
-            text='Login',
-            manager=self.ui_manager
-        )
-        clock = pygame.time.Clock()
-        running = True
-        login_popup = None
-
-        while running:
-            time_delta = clock.tick(60)/1000.0
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                if event.type == pygame.USEREVENT:
-                    if event.type == pygame_gui.UI_BUTTON_PRESSED:
-                        if event.ui_element == login_btn:
-                            login_popup = login_popup.LoginPopup(
-                                manager=self.ui_manager,
-                                rect=pygame.Rect(250, 150, 300, 300),
-                                on_success=self.login_success_handler
-                            )
-                if login_popup:
-                    login_popup.process_event(event)
-            self.ui_manager.update(time_delta)
-
-            self.window_surface.fill((30, 30, 30))
-            self.ui_manager.draw_ui(self.window_surface)
-            pygame.display.update()
 
     def select_character(self):
         selecting = True
@@ -665,7 +623,6 @@ class GameClient:
 
 if __name__ == '__main__':
     client = GameClient(host='localhost', port=5555)
-    client.create_login_popup()
     client.run()
 
 
