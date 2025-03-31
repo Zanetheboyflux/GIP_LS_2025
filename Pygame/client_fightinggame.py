@@ -28,7 +28,7 @@ class GameClient:
         self.winner = None
 
         self.SCREEN_WIDTH = 1000
-        self.SCREEN_HEIGHT = 1000
+        self.SCREEN_HEIGHT = 650
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Pokemon Fighting Game - Client")
         self.clock = pygame.time.Clock()
