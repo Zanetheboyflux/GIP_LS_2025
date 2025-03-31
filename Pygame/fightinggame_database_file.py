@@ -32,6 +32,7 @@ class GameDatabase:
         }
         self.connection = None
         self.initialize_database()
+        self.login_popup = None
 
     def initialize_database(self):
         try:

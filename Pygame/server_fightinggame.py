@@ -4,8 +4,6 @@ import threading
 import time
 import logging
 import argparse
-from pgu import gui
-import login_popup as login_popup
 import fightinggame_database_file as db_handler
 
 def parse_arguments():
@@ -35,30 +33,11 @@ class GameServer:
         self.match_started = False
         self.platforms = []
         self.init_platforms()
-        self.logger.info(f'Initializing cd  cd server on {host}:{port}')
+        self.logger.info(f'Initializing server on {host}:{port}')
 
         self.db_handler = db_handler.integrate_with_server(self)
 
         self.login_popup = None
-
-    def login_success_handler(self, user_data):
-        self.logger.info(f"User logged in: {user_data['account_name']}")
-        self.start()
-
-    def create_login_popup(self):
-        self.app = gui.Desktop()
-        self.app.connect(gui.QUIT, self.app.quit, None)
-
-        self.login_popup = login_popup.LoginPopup(on_success=self.login_success_handler)
-
-        c = gui.Table(width=320, height=240)
-        login_btn = gui.Button('login')
-        login_btn.connect(gui.CLICK, self.login_popup.open, None)
-
-        c.tr()
-        c.td(login_btn)
-
-        self.app.run(c)
 
     def init_platforms(self):
         self.platforms = [
@@ -293,12 +272,7 @@ class GameServer:
 def main():
     args = parse_arguments()
     server = GameServer(port=args.port)
-    try:
-        server.create_login_popup()
-
-    except KeyboardInterrupt:
-        server.logger.info('Server stopped by user')
-        server.close_server()
+    server.start()
 
 if __name__ == "__main__":
     main()
