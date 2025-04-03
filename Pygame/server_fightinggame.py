@@ -5,7 +5,6 @@ import time
 import logging
 import argparse
 import fightinggame_database_file as db_handler
-from login_popup import LoginPopup
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Pokemon Fighting Game Server')
@@ -36,7 +35,7 @@ class GameServer:
         self.init_platforms()
         self.logger.info(f'Initializing server on {host}:{port}')
 
-        self.db_handler = db_handler.integrate_with_server(self)
+        self.db_handler = db_handler.ServerDatabaseHandler()
 
     def init_platforms(self):
         self.platforms = [
@@ -111,8 +110,12 @@ class GameServer:
                         self.handle_attack(player_num, action)
 
                 if 'character_select' in client_data:
-                    self.game_state['players'][player_num]['character']= client_data['character_select']
-                    self.logger.info(f'Player {player_num} selected character: {client_data}')
+                    character_selected = client_data['character_select']
+                    self.game_state['players'][player_num]['character']= character_selected
+                    self.logger.info(f'Player {player_num} selected character: {character_selected}')
+
+                    player_name = f'Player {player_num}'
+                    self.db_handler.save_character_selection(player_name, character_selected)
 
                 if 'ready' in client_data and client_data['ready']:
                     self.game_state['ready'] += 1
@@ -243,6 +246,7 @@ class GameServer:
 
                 if game_over:
                     self.logger.info(f'Game_over! Player {winner} wins!')
+                    self.db_handler.handle_game_over(self.game_state, winner)
                     for client_socket in self.clients.values():
                         client_socket.send(pickle.dumps({
                             "status": 'game_over',

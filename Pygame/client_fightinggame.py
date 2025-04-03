@@ -8,7 +8,6 @@ import logging
 import argparse
 from pygame.locals import *
 import pygame_gui
-from login_popup import LoginPopup
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Pokemon Fighting Game Server')
@@ -73,9 +72,6 @@ class GameClient:
         self.server_error = False
         self.error_message = None
 
-        self.player_name = None
-        self.game_state = "Login"
-
     def connect_to_server(self):
         try:
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -100,7 +96,7 @@ class GameClient:
                 receive_thread.start()
                 return True
             else:
-                self.logger.info(f'Failed to connect: {response.get('message', 'Unknown error')}')
+                self.logger.info(f'Failed to connect: {response.get("message", "Unknown error")}')
                 self.server_error = True
                 self.error_message = response.get("message", "Failed to connect to server")
                 return False
@@ -226,6 +222,47 @@ class GameClient:
         exit_text = self.small_font.render("Press ESC to exit", True, self.YELLOW)
         exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH // 2, popup_y + popup_height - 50))
         self.screen.blit(exit_text, exit_rect)
+
+    def login_success_handler(self, user_data):
+        self.logger.info(f"User logged in: {user_data['account_name']}")
+        self.start()
+
+    def show_popup(self,manager, window_rect):
+        popup_rect = pygame.Rect(window_rect.centerx - 150, window_rect.centery - 75, 300, 150)
+        popup_window = pygame_gui.elements.UIPanel(popup_rect, manager=manager)
+
+        input_rect = pygame.Rect(50, 30, 200, 30)
+        input_field = pygame_gui.elements.UITextEntryLine(relative_rect=input_rect, container=popup_window,
+                                                          manager=manager)
+
+        button_rect = pygame.Rect(100, 80, 100, 30)
+        button = pygame_gui.elements.UIButton(relative_rect=button_rect, text='Submit', container=popup_window,
+                                              manager=manager)
+
+        return input_field, button
+
+    def create_login_popup(self):
+        pygame.init()
+        manager = pygame_gui.UIManager((1000, 800))
+        screen = pygame.display.set_mode((1000, 800))
+        input_field, button = self.show_popup(manager, screen.get_rect())
+
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame_gui.UI_BUTTON_PRESSED and event.ui_element == button:
+                    print("Input Value:", input_field.get_text())
+
+                manager.process_events(event)
+
+            manager.update(0.016)  # Approximate frame time
+            # screen.fill((0, 0, 0))
+            # manager.draw_ui(screen)
+            pygame.display.update()
+
+        # pygame.quit()
 
     def select_character(self):
         selecting = True
@@ -595,6 +632,30 @@ class GameClient:
 
 
     def run(self):
+        pygame.init()
+        manager = pygame_gui.UIManager(self.screen.get_size())
+
+        input_field, button = self.show_popup(manager, self.screen.get_rect())
+
+        popup_running = True
+        while popup_running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame_gui.UI_BUTTON_PRESSED and event.ui_element == button:
+                    user_input = input_field.get_text()
+                    print("User Input:", user_input)  # Do something with this input
+                    popup_running = False  # Close popup and continue execution
+
+                manager.process_events(event)
+
+            manager.update(0.016)
+            self.screen.fill((0, 0, 0))
+            manager.draw_ui(self.screen)
+            pygame.display.update()
+
+        # Continue with existing logic
         if self.connect_to_server():
             self.select_character()
             self.wait_for_match()
@@ -611,7 +672,6 @@ class GameClient:
             while running:
                 self.screen.fill(self.BLACK)
                 self.draw_error_popup()
-
                 for event in pygame.event.get():
                     if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                         running = False
@@ -621,9 +681,12 @@ class GameClient:
             pygame.quit()
             sys.exit()
 
+
 if __name__ == '__main__':
     client = GameClient(host='localhost', port=5555)
     client.run()
+
+
 
 
 

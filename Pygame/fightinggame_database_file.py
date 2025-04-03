@@ -28,8 +28,10 @@ class GameDatabase:
             'host' : 'localhost',
             'user' : 'root',
             'password' : '',
-            'database': 'fightinggame_database'
+            'database': 'fightinggame_database',
+            'connect_timeout': 3000
         }
+
         self.connection = None
         self.initialize_database()
         self.login_popup = None
@@ -76,27 +78,64 @@ class GameDatabase:
             self.connection.close()
             self.connection = None
 
-    def record_game_result(self, winner: int, loser: int, Player1_character: str, Player2_character: str) -> bool:
+    def save_player_selection(self, player1_character, player2_character):
         try:
             self.connect()
-            cursor = self.connection.cursor()
+            if self.connection:
+                cursor = self.connection.cursor()
+                if self.db_type == 'sqlite':
+                    cursor.execute("INSERT INTO pygame (Player1_character, Player2_character) VALUES (?,?)",
+                                   (player1_character, player2_character))
+                elif self.db_type == 'mysql':
+                    cursor.execute("INSERT INTO pygame (Player1_character, Player2_character) VALUES (?, ?)",
+                                   (player1_character, player2_character))
+                self.connection.commit()
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error saving player selection: {str(e)}")
+        finally:
+            self.disconnect()
 
-            query = '''
-            INSERT INTO fightinggame_database (Winner, Loser, Player1_character, Player2_character)
-            VALUES (?, ?, ?, ?)
-            '''
-            if self.db_type == "mysql":
-                query = query.replace('?', '%s')
+    def record_game_result(self, winner: int, loser: int, player1_character: str, player2_character: str) -> bool:
+        """Records the result of a game in the database
 
-            cursor.execute(query, (winner, loser, Player1_character, Player2_character))
-            self.connection.commit()
+            Args:
+                winner (int): The player number who won (1 or 2)
+                loser (int): The player number who lost (1 or 2)
+                player1_character (str, optional): Character used by player 1
+                player2_character (str, optional): Character used by player 2
 
-            self.logger.info(f'Game recorded: Winner={winner}, Loser={loser}, P1={Player1_character}, P2= {Player2_character}')
-            return True
+            Returns:
+                bool: True if successful, False otherwise
+            """
+        try:
+            self.connect()
+            if self.connection:
+                cursor = self.connection.cursor()
+                if self.db_type == 'sqlite':
+                    if player1_character and player2_character:
+                        cursor.execute('''INSERT INTO pygame (Winner, Loser, Player1_character, Player2_character) VALUES (?, ?, ?, ?)''',
+                                       (winner, loser, player1_character, player2_character))
+                    else:
+                        cursor.execute('INSERT INTO pygame (Winner, Loser) VALUES (?, ?)',
+                                       (winner, loser))
+                elif self.db_type == 'mysql':
+                    if player1_character and player2_character:
+                        cursor.execute('''
+                                            INSERT INTO pygame (Winner, Loser, Player1_character, Player2_character)
+                                            VALUES (%s, %s, %s, %s)
+                                        ''', (winner, loser, player1_character, player2_character))
+                    else:
+                        cursor.execute('INSERT INTO pygame (Winner, Loser) VALUES (%s, %s)',
+                                       (winner, loser))
+
+                self.connection.commit()
+                return True
+            return False
         except Exception as e:
             self.logger.error(f'Error recording game result: {str(e)}')
             return False
-
         finally:
             self.disconnect()
 
@@ -188,13 +227,16 @@ class DatabaseUpdater:
         self.db = db
         self.logger = logging.getLogger('DatabaseUpdater')
 
-    def update_from_game_state(self, game_state: Dict[str, Any], winner: int):
+    def update_from_game_state(self, game_state: Dict[str, Any], winner: int) -> bool:
         """
-        args:
-        :param game_state (dict): Current game state from the server
-        :param winner (int): Player number who won (1 or 2)
-        :return:
-        bool: True if succesful, False otherwise
+        Update the database with information from the current game state.
+
+        Args:
+            game_state (dict): Current game state from the server
+            winner (int): Player number who won (1 or 2)
+
+        Returns:
+            bool: True if successful, False otherwise
         """
         try:
             if 'players' not in game_state:
@@ -220,10 +262,10 @@ class DatabaseUpdater:
             loser = 2 if winner == 1 else 1
 
             return self.db.record_game_result(
-                winner = winner,
-                loser = loser,
-                Player1_character = player1_character,
-                Player2_character = player2_character
+                winner=winner,
+                loser=loser,
+                player1_character=player1_character,
+                player2_character=player2_character
             )
         except Exception as e:
             self.logger.error(f"Error updating database from game state: {str(e)}")
@@ -235,7 +277,6 @@ class ServerDatabaseHandler:
         Args:
          db_config (dict): Database configuration
          """
-        self.update = None
         self.db_config = db_config or {
             'db_type': 'sqlite',
             'db_path': 'game_database.db'
@@ -244,20 +285,37 @@ class ServerDatabaseHandler:
         self.updater = DatabaseUpdater(self.db)
         self.logger = logging.getLogger('ServerDatabaseHandler')
 
-    def handle_game_over(self, game_state: Dict[str, Any], winner:int)-> None:
+    def handle_game_over(self, game_state: Dict[str, Any], winner:int)-> bool:
         """
-        args:
-        :param game_state (dict): current game state
-        :param winner (int): Player number who won (1 or 2)
+        Handle game over event by recording results to database
+
+        Args:
+            game_state (dict): current game state
+            winner (int): Player number who won (1 or 2)
+
+        Returns:
+            bool: True if successfully recorded, False otherwise
         """
         try:
-            success = self.update.update_from_game_state(game_state, winner)
+            success = self.updater.update_from_game_state(game_state, winner)
             if success:
                 self.logger.info(f"Succesfully recorded game result (Winner: Player {winner}")
             else:
                 self.logger.error("Failed to record game result")
         except Exception as e:
             self.logger.error(f'Error handling game over: {str(e)}')
+
+    def save_character_selection(self, player1_character: str, player2_character: str) -> bool:
+        try:
+            success = self.db.save_player_selection(player1_character, player2_character)
+            if success:
+                self.logger.info(f"Successfully saved character selection: P1={player1_character}, P2={player2_character}")
+            else:
+                self.logger.error("Failed to save character selection")
+            return success
+        except Exception as e:
+            self.logger.info(f'Error saving character selection: {str(e)}')
+            return False
 
 def integrate_with_server(server_instance):
     """
@@ -272,6 +330,11 @@ def integrate_with_server(server_instance):
             if not server_instance.match_started and server_instance.game_state['ready'] >= 2:
                 server_instance.logger.info("Both players ready, starting match!")
                 server_instance.match_started = True
+
+                player1_char = server_instance.game_state['players'][1].get('character')
+                player2_char = server_instance.game_state['players'][2].get('character')
+                if player1_char and player2_char:
+                    db_handler.save_character_selection(player1_char, player2_char)
 
                 for client_socket in server_instance.clients.values():
                     client_socket.send(pickle.dumps({
@@ -315,12 +378,12 @@ def integrate_with_server(server_instance):
             return db_handler
 
 if __name__ == "__main__":
-    test_db = GameDatabase(db_type='sqlite', db_path='test_game_database.db')
+    test_db = GameDatabase(db_type='mysql', db_path='test_game_database.db')
     test_db.record_game_result(
         winner=1,
         loser=2,
-        Player1_character="Lucario",
-        Player2_character='Mewtwo'
+        player1_character="Lucario",
+        player2_character='Mewtwo'
     )
 
     lucario_stats = test_db.get_character_stats("lucario")
