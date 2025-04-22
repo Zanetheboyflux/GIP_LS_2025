@@ -1,5 +1,4 @@
 import pickle
-import sqlite3
 import mysql.connector
 import logging
 import os
@@ -7,8 +6,7 @@ import time
 from typing import Dict, Any, Optional, Tuple
 
 class GameDatabase:
-    def __init__(self, db_type="sqlite", db_path="fightinggame_database.db",
-                 mysql_config=None):
+    def __init__(self, db_type="mysql", db_path="fightinggame_database"):
         """
         Args:
         :param db_type (str): "sqlite" or "mysql"
@@ -24,7 +22,7 @@ class GameDatabase:
         self.db_type = db_type
         self.db_path = db_path
 
-        self.mysqlconfig = mysql_config or {
+        self.mysqlconfig = {
             'host' : 'localhost',
             'user' : 'root',
             'password' : '',
@@ -36,14 +34,28 @@ class GameDatabase:
         self.initialize_database()
         self.login_popup = None
 
+        try:
+            self.connect()
+            if self.connection:
+                self.cursor = self.connection.cursor()
+
+                if self.db_type == 'mysql':
+                    self.cursor.execute(''' SELECT * FROM pygame ''')
+
+                self.connection.commit()
+        except Exception as e:
+            self.logger.error(f'Error selecting information: {str(e)}')
+        finally:
+            self.disconnect()
+
     def initialize_database(self):
         try:
             self.connect()
             if self.connection:
-                cursor = self.connection.cursor()
+                self.cursor = self.connection.cursor()
 
-                if self.db_type == 'sqlite':
-                    cursor.execute(''' CREATE TABLE IF NOT EXISTS pygame (
+                if self.db_type == 'mysql':
+                    self.cursor.execute(''' CREATE TABLE IF NOT EXISTS pygame (
                     GameID INTEGER PRIMARY KEY AUTOINCREMENT,
                     Winner INTEGER, 
                     Loser INTEGER, 
@@ -51,6 +63,12 @@ class GameDatabase:
                     Player2_character TEXT, 
                     Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)
                     ''')
+
+                    self.cursor.execute(''' CREATE TABLE IF NOT EXISTS users (
+                    accountID INTEGER FOREIGN KEY REFERENCE GameID NOT NULL AUTO_INCREMENT, 
+                    account_name VARCHAR(255) NOT NULL, 
+                    account_password VARCHAR(255) NOT NULL, 
+                    win_count INTEGER default 0''')
 
                 self.connection.commit()
                 self.logger.info('Database initialized succesfully')
@@ -63,10 +81,7 @@ class GameDatabase:
 
     def connect(self):
         try:
-            if self.db_type == 'sqlite':
-                self.connection = sqlite3.connect(self.db_path)
-                return True
-            elif self.db_type == 'mysql':
+            if self.db_type == 'mysql':
                 self.connection = mysql.connector.connect(**self.mysqlconfig)
                 return True
         except Exception as e:
@@ -78,24 +93,24 @@ class GameDatabase:
             self.connection.close()
             self.connection = None
 
-    def save_player_selection(self, player1_character, player2_character):
+    def save_player_selection(self, player_name, character_selected):
         try:
             self.connect()
             if self.connection:
                 cursor = self.connection.cursor()
-                if self.db_type == 'sqlite':
-                    cursor.execute("INSERT INTO pygame (Player1_character, Player2_character) VALUES (?,?)",
-                                   (player1_character, player2_character))
-                elif self.db_type == 'mysql':
-                    cursor.execute("INSERT INTO pygame (Player1_character, Player2_character) VALUES (?, ?)",
-                                   (player1_character, player2_character))
+                if self.db_type == 'mysql':
+                    cursor.execute("INSERT INTO pygame (player_name, character_selected) VALUES (?, ?)",
+                                   (player_name, character_selected))
                 self.connection.commit()
-                return True
+                result = True
+                return result
             return False
         except Exception as e:
             self.logger.error(f"Error saving player selection: {str(e)}")
+            result = False
         finally:
             self.disconnect()
+        return result
 
     def record_game_result(self, winner: int, loser: int, player1_character: str, player2_character: str) -> bool:
         """Records the result of a game in the database
@@ -113,17 +128,10 @@ class GameDatabase:
             self.connect()
             if self.connection:
                 cursor = self.connection.cursor()
-                if self.db_type == 'sqlite':
-                    if player1_character and player2_character:
-                        cursor.execute('''INSERT INTO pygame (Winner, Loser, Player1_character, Player2_character) VALUES (?, ?, ?, ?)''',
-                                       (winner, loser, player1_character, player2_character))
-                    else:
-                        cursor.execute('INSERT INTO pygame (Winner, Loser) VALUES (?, ?)',
-                                       (winner, loser))
-                elif self.db_type == 'mysql':
+                if self.db_type == 'mysql':
                     if player1_character and player2_character:
                         cursor.execute('''
-                                            INSERT INTO pygame (Winner, Loser, Player1_character, Player2_character)
+                                            INSERT INTO pygame (Winner, Loser, player_name, character_selected)
                                             VALUES (%s, %s, %s, %s)
                                         ''', (winner, loser, player1_character, player2_character))
                     else:
@@ -157,24 +165,25 @@ class GameDatabase:
             cursor = self.connection.cursor()
 
             cursor.execute('''
-            SELECT COUNT(*) FROM fightinggame_database
-            WHERE Player1_character = ?
+            SELECT COUNT(*) FROM pygame
+            WHERE character_selected = ?
             ''', (character_name,))
 
-            player1_count = cursor.fetchtone()[0]
+            player1_count = cursor.fetchone()[0]
 
             cursor.execute('''
-            SELECT COUNT(*) FROM fightinggame_database
-            WHERE Player2_character = ?
+            SELECT COUNT(*) FROM pygame
+            WHERE character_selected = ?
             ''', (character_name,))
 
-            player2_count = cursor.fetchtone()[0]
+            player2_count = cursor.fetchone()[0]
 
             cursor.execute('''
-            SELECT COUNT(*) FROM fightinggame_database
-            WHERE (Winner = 1 AND Player1_character = ?) 
-            or (Winner = 2 AND Player2_character = ?''')
-            wins = cursor.fetchtone()[0]
+            SELECT COUNT(*) FROM pygame
+            WHERE (Winner = 1 AND character_selected = ?) 
+            or (Winner = 2 AND character_selected = ?''',
+            (character_name, character_name))
+            wins = cursor.fetchone()[0]
 
             total_games = player1_count + player2_count
             stats['total_games'] = total_games
@@ -200,18 +209,18 @@ class GameDatabase:
             self.connect()
             cursor = self.connection.cursor()
             cursor.execute(''' 
-            SELECT GameID, Winner, Loser, Player1_character, Player2_character 
-            FROM fightinggame_database
+            SELECT GameID, Winner, Loser, character_selected, player_name, Timestamp
+            FROM pygame
             ORDER BY Timestamp DESC
             LIMIT ?''',
                            (limit,))
 
-            columns = ['GameID', 'winner', 'loser', 'player1_character', 'player2_character', 'timestamp']
+            columns = ['GameID', 'winner', 'loser', 'player_name', 'character_selected', 'timestamp']
 
             for row in cursor.fetchall():
                 game_data = dict(zip(columns, row))
                 games.append(game_data)
-                return games
+            return games
         except Exception as e:
             self.logger.error(f'Error getting recent games: {str(e)}')
             return games
@@ -256,16 +265,16 @@ class DatabaseUpdater:
                 self.logger.error("Invalid game state: character data missing")
                 return False
 
-            player1_character = player1['character']
-            player2_character = player2['character']
+            player_name = f"Player {winner}"
+            character_selected = players[winner]['character']
 
             loser = 2 if winner == 1 else 1
 
             return self.db.record_game_result(
                 winner=winner,
                 loser=loser,
-                player1_character=player1_character,
-                player2_character=player2_character
+                player1_character=player_name,
+                player2_character=character_selected
             )
         except Exception as e:
             self.logger.error(f"Error updating database from game state: {str(e)}")
@@ -278,8 +287,8 @@ class ServerDatabaseHandler:
          db_config (dict): Database configuration
          """
         self.db_config = db_config or {
-            'db_type': 'sqlite',
-            'db_path': 'game_database.db'
+            'db_type': 'mysql',
+            'db_path': 'game_database'
         }
         self.db = GameDatabase(**self.db_config)
         self.updater = DatabaseUpdater(self.db)
@@ -378,7 +387,7 @@ def integrate_with_server(server_instance):
             return db_handler
 
 if __name__ == "__main__":
-    test_db = GameDatabase(db_type='mysql', db_path='test_game_database.db')
+    test_db = GameDatabase(db_type='mysql', db_path='test_game_database')
     test_db.record_game_result(
         winner=1,
         loser=2,

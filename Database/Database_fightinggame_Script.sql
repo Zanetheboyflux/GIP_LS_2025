@@ -30,3 +30,13 @@ alter table users
 add GameID int ; 
 alter table users 
 add foreign key (accountID) references pygame(GameID); 
+alter table Pygame 
+drop column Player1_character;  
+alter table Pygame 
+drop column Player2_character;  
+alter table Pygame
+add player_name varchar(255) not null; 
+alter table Pygame 
+add character_selected varchar(255) not null; 
+
+INSERT INTO pygame (Winner, Loser, player_name, character_selected) VALUES (2, 1, 'Player2', 'Mewtwo'); 

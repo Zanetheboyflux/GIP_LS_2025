@@ -227,6 +227,17 @@ class GameServer:
                 self.logger.info('Both players ready, starting match!')
                 self.match_started = True
 
+                if 1 in self.game_state['players'] and 2 in self.game_state['players']:
+                    player1_name = "Player 1"
+                    player2_name = "Player 2"
+                    player1_character = self.game_state['players'][1].get('character')
+                    player2_character = self.game_state['players'][2].get('character')
+
+                    if player1_character:
+                        self.db_handler.db.save_player_selection(player1_name, player1_character)
+                    if player2_character:
+                        self.db_handler.db.save_player_selection(player2_name, player2_character)
+
                 for client_socket in self.clients.values():
                     client_socket.send(pickle.dumps({
                         "status": "match_start",
@@ -246,7 +257,14 @@ class GameServer:
 
                 if game_over:
                     self.logger.info(f'Game_over! Player {winner} wins!')
+                    player1_character = self.game_state['players'][1].get('character')
+                    player2_character = self.game_state['players'][2].get('character')
+
+                    winner_num = winner
+                    loser_num = 1 if winner == 2 else 2
+
                     self.db_handler.handle_game_over(self.game_state, winner)
+
                     for client_socket in self.clients.values():
                         client_socket.send(pickle.dumps({
                             "status": 'game_over',
@@ -257,8 +275,9 @@ class GameServer:
                     self.match_started = False
                     self.game_state['ready'] = 0
 
-                    for player in self.game_state['players'].values():
-                        player.update({'health': 100, 'is_dead': False, 'x': 300 if player_num == 1 else 700, 'y': 580})
+                    for player_num, player in self.game_state['players'].items():
+                        player_x = 300 if player_num == 1 else 700
+                        player.update({'health': 100, 'is_dead': False, 'x': player_x, 'y': 580})
                     self.logger.info('Game reset for new match')
 
             time.sleep(0.05)
