@@ -24,6 +24,7 @@ class GameServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.clients = {}
+        self.logger.info(f'Clients: {self.clients}')
         self.client_characters = {}
         self.game_state = {
             'players': {},
@@ -36,6 +37,10 @@ class GameServer:
         self.logger.info(f'Initializing server on {host}:{port}')
 
         self.db_handler = db_handler.ServerDatabaseHandler()
+
+        #self.authenticate_users = {}
+        #self.require_authentication = True
+        #self.authenticated_users = None
 
     def init_platforms(self):
         self.platforms = [
@@ -54,35 +59,37 @@ class GameServer:
             update_thread.daemon = True
             update_thread.start()
 
-            while True:
-                client_socket, address = self.server_socket.accept()
-                if len(self.clients)>= 2:
-                    self.logger.info(f'Rejected connection from {address} - server full')
-                    client_socket.send(pickle.dumps({'status': "error", "message": "Server full"}))
-                    client_socket.close()
-                    continue
-                self.logger.info(f'Connection from {address} has been established')
+            #while True:
+            client_socket, address = self.server_socket.accept()
+            if len(self.clients)>= 2:
+                self.logger.info(f'Rejected connection from {address} - server full')
+                client_socket.send(pickle.dumps({'status': "error", "message": "Server full"}))
+                client_socket.close()
+                #continue
+            self.logger.info(f'Connection from {address} has been established')
 
-                player_num = len(self.clients) + 1
-                self.clients[player_num] = client_socket
+            player_num = len(self.clients) + 1
+            self.logger.info(f'Player num: {player_num}')
+            self.clients[player_num] = client_socket
+            self.logger.info(f'client_socket: {client_socket}')
 
-                # self.game_state[player_num]= client_socket
-                self.game_state['players'][player_num] = {
-                    'connected': True,
-                    'character': None,
-                    'x': 300 if player_num == 1 else 700,
-                    'y': 580,
-                    'health': 100,
-                    'is_dead': False,
-                    'is_attacking': False,
-                    'is_special_attacking': False,
-                    'facing_right': True if player_num == 2 else False
-                }
+            # self.game_state[player_num]= client_socket
+            self.game_state['players'][player_num] = {
+                'connected': True,
+                'character': None,
+                'x': 300 if player_num == 1 else 700,
+                'y': 580,
+                'health': 100,
+                'is_dead': False,
+                'is_attacking': False,
+                'is_special_attacking': False,
+                'facing_right': True if player_num == 2 else False
+            }
 
-                client_socket.send(pickle.dumps({'status':'connected', 'player_num': player_num}))
-                client_thread = threading.Thread(target=self.handle_client, args=(client_socket, player_num))
-                client_thread.daemon = True
-                client_thread.start()
+            client_socket.send(pickle.dumps({'status':'connected', 'player_num': player_num}))
+            client_thread = threading.Thread(target=self.handle_client, args=(client_socket, player_num))
+            client_thread.daemon = True
+            client_thread.start()
 
         except Exception as e:
             self.logger.error(f'Error starting server: {str(e)}')
@@ -94,6 +101,7 @@ class GameServer:
         heartbeat_thread = threading.Thread(target=self.send_heartbeats, args=(client_socket, player_num))
         heartbeat_thread.daemon = True
         heartbeat_thread.start()
+        self.logger.info(f'Client socket: {client_socket}')
 
         try:
             while True:
@@ -101,6 +109,41 @@ class GameServer:
                 if not data:
                     break
                 client_data = pickle.loads(data)
+                self.logger.info(f'client data: {client_data}')
+
+                #if 'action' in client_data:
+                    #if client_data['action'] == 'login':
+                        #username = client_data.get('username')
+                        #password = client_data.get('password')
+                        #self.logger.info(f'username: {username}')
+                        #self.logger.info(f'password: {password}')
+                        #login_result = self.db_handler.authenticate_user(username, password)
+                        #self.logger.info(f'login result: {login_result}')
+
+                        #client_socket.send(pickle.dumps({
+                            #'status': 'success' if login_result['success'] else 'error',
+                            #'message': login_result['message'],
+                            #'user_data': login_result.get('user_data')
+                        #}))
+                        #if login_result['success']:
+                            #self.authenticated_users[player_num] = login_result['user_data']
+                        #continue
+
+                    #elif client_data['action'] == 'register':
+                        #username = client_data.get('username')
+                        #password = client_data.get('password')
+                        #self.logger.info(f'username: {username}')
+                        #self.logger.info(f'password: {password}')
+
+                        #register_result = self.db_handler.register_new_user(username, password)
+                        #self.logger.info(f'register result: {register_result}')
+
+                        #client_socket(pickle.dumps({
+                            #'status': 'success' if register_result['success'] else 'error',
+                            #'message': register_result['message']
+                        #}))
+                        #self.logger.info('einde register')
+                        #continue
 
                 if 'player_action' in client_data:
                     action = client_data['player_action']
@@ -109,13 +152,18 @@ class GameServer:
                     if 'attack' in action and action['attack']:
                         self.handle_attack(player_num, action)
 
-                if 'character_select' in client_data:
-                    character_selected = client_data['character_select']
-                    self.game_state['players'][player_num]['character']= character_selected
-                    self.logger.info(f'Player {player_num} selected character: {character_selected}')
+                if 'player1_character' in client_data or 'player2_character' in client_data:
+                    character = None
+                    if 'player1_character' in client_data and player_num == 1:
+                        character = client_data['player1_character']
+                    elif 'player2_character' in client_data and player_num == 2:
+                        character = client_data['player2_character']
 
-                    player_name = f'Player {player_num}'
-                    self.db_handler.save_character_selection(player_name, character_selected)
+                    if character:
+                        self.game_state['players'][player_num]['character'] = character
+                        self.logger.info(f'Player {player_num} selected character: {character}')
+
+                    self.broadcast_game_state()
 
                 if 'ready' in client_data and client_data['ready']:
                     self.game_state['ready'] += 1
@@ -129,6 +177,7 @@ class GameServer:
                     self.game_state['players'][player_num]['is_dead'] = True
                     self.logger.info(f'Player {player_num} died!')
 
+
         except Exception as e:
             self.logger.info(f'Error handling client {player_num}:{str(e)}')
             try:
@@ -141,8 +190,10 @@ class GameServer:
 
     def send_heartbeats(self, client_socket, player_num):
         while player_num in self.clients:
+            self.logger.info(f'self.clients: {self.clients}')
             try:
                 client_socket.send(pickle.dumps({'status': 'heartbeat'}))
+                self.logger.info(f'client socket: {client_socket}')
                 time.sleep(1)
             except Exception as e:
                 self.logger.info(f'Heartbeat failed for player{player_num}: {str(e)}')
@@ -170,6 +221,9 @@ class GameServer:
     def process_action(self, player_num, action):
         player = self.game_state['players'][player_num]
 
+        #if player_num not in self.authenticate_users and self.require_authentication:
+            #self.logger.warning(f'Player {player_num} attempted action without authentication')
+
         if 'x' in action:
             player['x'] = action['x']
         if 'y' in action:
@@ -183,9 +237,10 @@ class GameServer:
             player['is_special_attacking'] = action['is_special_attacking']
 
     def broadcast_game_state(self):
+        game_state_data = pickle.dumps({"status": "game_state_update", "game_state": self.game_state})
         for client_socket in self.clients.values():
             try:
-                client_socket.send(pickle.dumps(self.game_state))
+                client_socket.send(game_state_data)
             except Exception as e:
                 self.logger.error(f'Error sending game state: {str(e)}')
 
@@ -227,16 +282,19 @@ class GameServer:
                 self.logger.info('Both players ready, starting match!')
                 self.match_started = True
 
+                player1_character = self.game_state['players'][1].get('character')
+                player2_character = self.game_state['players'][2].get('character')
+
+                if player1_character and player2_character:
+                    success = self.db_handler.save_character_selection(player1_character, player2_character)
+                    self.logger.info(f'Character selection saved to database: {success}')
+
                 if 1 in self.game_state['players'] and 2 in self.game_state['players']:
-                    player1_name = "Player 1"
-                    player2_name = "Player 2"
                     player1_character = self.game_state['players'][1].get('character')
                     player2_character = self.game_state['players'][2].get('character')
 
                     if player1_character:
-                        self.db_handler.db.save_player_selection(player1_name, player1_character)
-                    if player2_character:
-                        self.db_handler.db.save_player_selection(player2_name, player2_character)
+                        self.db_handler.db.save_player_selection(player1_character, player2_character)
 
                 for client_socket in self.clients.values():
                     client_socket.send(pickle.dumps({
@@ -295,6 +353,66 @@ def main():
     args = parse_arguments()
     server = GameServer(port=args.port)
     server.start()
+
+#def add_auth_handling_to_server(server):
+#    original_handle_client = server.handle_client
+#
+#    def enhanced_handle_client(client_socket, player_num):
+#        try:
+#            data = client_socket.recv(4096)
+#            if not data:
+#                return
+#
+#            client_data = pickle.loads(data)
+#
+#            if 'action' in client_data and client_data['action'] == 'login':
+#                username = client_data.get('username')
+#                password = client_data.get('password')
+#
+#                login_result = server.db_handler.authenticate_user(username, password)
+#
+#                if login_result['success']:
+#                    client_socket.send(pickle.dumps({
+#                        'status': 'success',
+#                        'message': 'Login successful',
+#                        'user_data': login_result['user_data']
+#                    }))
+#                else:
+#                    client_socket.send(pickle.dumps({
+#                        'status': 'error',
+#                        'message': login_result['message']
+#                    }))
+#            elif 'action' in client_data and client_data['action'] == 'register':
+#                username = client_data.get('username')
+#                password = client_data.get('password')
+#
+#                register_result = server.db_handler.register_new_user(username, password)
+#
+#                if register_result['success']:
+#                    client_socket.send(pickle.dumps({
+#                        'status': 'success',
+#                        'message': 'Registration successful'
+#                    }))
+#                else:
+#                    client_socket.send(pickle.dumps({
+#                        'status': 'error',
+#                        'message': register_result['message']
+#                    }))
+#
+#            original_handle_client(client_socket, player_num)
+#
+#        except Exception as e:
+#            server.logger.error(f"Error handling authentication: {str(e)}")
+#            try:
+#                client_socket.send(pickle.dumps({
+#                    'status': 'error',
+#                    'message': f"Server error: {str(e)}"
+#                }))
+#            except:
+#                pass
+#
+#    server.handle_client = enhanced_handle_client
+#    return server
 
 if __name__ == "__main__":
     main()

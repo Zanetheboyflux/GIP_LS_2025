@@ -1,4 +1,5 @@
 import pygame
+import pygame_gui
 import socket
 import pickle
 import threading
@@ -7,7 +8,8 @@ import time
 import logging
 import argparse
 from pygame.locals import *
-import pygame_gui
+#from typing import Dict, Any, Optional, Tuple
+#from login_system import LoginSystem
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Pokemon Fighting Game Server')
@@ -86,6 +88,8 @@ class GameClient:
                 self.player_num = response['player_num']
                 self.connected = True
                 self.logger.info(f'Connected to server as Player {self.player_num}')
+
+                #self.send_data({'login_info': user_data})
 
                 self.heartbeat_thread = threading.Thread(target=self.check_server_heartbeat)
                 self.heartbeat_thread.daemon = True
@@ -223,47 +227,69 @@ class GameClient:
         exit_rect = exit_text.get_rect(center=(self.SCREEN_WIDTH // 2, popup_y + popup_height - 50))
         self.screen.blit(exit_text, exit_rect)
 
-    def login_success_handler(self, user_data):
-        self.logger.info(f"User logged in: {user_data['account_name']}")
-        self.start()
-
-    def show_popup(self,manager, window_rect):
-        popup_rect = pygame.Rect(window_rect.centerx - 150, window_rect.centery - 75, 300, 150)
-        popup_window = pygame_gui.elements.UIPanel(popup_rect, manager=manager)
-
-        input_rect = pygame.Rect(50, 30, 200, 30)
-        input_field = pygame_gui.elements.UITextEntryLine(relative_rect=input_rect, container=popup_window,
-                                                          manager=manager)
-
-        button_rect = pygame.Rect(100, 80, 100, 30)
-        button = pygame_gui.elements.UIButton(relative_rect=button_rect, text='Submit', container=popup_window,
-                                              manager=manager)
-
-        return input_field, button
-
-    def create_login_popup(self):
-        pygame.init()
-        manager = pygame_gui.UIManager((1000, 800))
-        screen = pygame.display.set_mode((1000, 800))
-        input_field, button = self.show_popup(manager, screen.get_rect())
-
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame_gui.UI_BUTTON_PRESSED and event.ui_element == button:
-                    print("Input Value:", input_field.get_text())
-
-                manager.process_events(event)
-
-            manager.update(0.016)  # Approximate frame time
-            # screen.fill((0, 0, 0))
-            # manager.draw_ui(screen)
-            pygame.display.update()
-
-        # pygame.quit()
-
+    #def fix_login_system(self):
+    #    original_login = LoginSystem.login
+    #    original_register = LoginSystem.register
+#
+    #def patched_login(self_login, username, password):
+    #    if not self_login.client_socket:
+    #        self_login.show_message("No connection to server", True)
+    #        return False
+#
+    #    try:
+    #        data = pickle.dumps({
+    #            'action': 'login',
+    #            'username': username,
+    #            'password': password
+    #        })
+    #        self_login.client_socket.sendall(data)
+#
+    #        response_data = self_login.client_socket.recv(4096)
+    #        response = pickle.loads(response_data)
+#
+    #        if response.get('status') == 'success':
+    #            self_login.current_user = response.get('user_data')
+    #            self_login.logger.info(f'User logged in: {username}')
+    #            return True
+    #        else:
+    #            self_login.show_message(response.get('message', 'login failed'), True)
+    #            return False
+    #    except Exception as e:
+    #        self_login.logger.error(f'Error during login: {str(e)}')
+    #        self_login.show_message('connection error', True)
+    #        return False
+    #def patched_register(self_login, username, password):
+    #    if not self_login.client_socket:
+    #        self_login.show_message('No connection to server', True)
+    #        return False
+#
+    #    try:
+    #        data = pickle.dumps({
+    #            'action': 'register',
+    #            'username': username,
+    #            'password': password
+    #        })
+    #        self_login.client_socket.sendall(data)
+#
+    #        response_data = self_login.client_socket.recv(4096)
+    #        response = pickle.loads(response_data)
+#
+    #        if response.get('status') == 'success':
+    #            self_login.show_message('Registration successful! You can now login.')
+    #            return True
+    #        else:
+    #            self_login.show_message(response.get('message', 'Registration failed'), True)
+    #            return False
+#
+    #    except Exception as e:
+    #        self_login.logger.error(f'Error during registration: {str(e)}')
+    #        self_login.show_message('Connection error', True)
+    #        return False
+#
+    #LoginSystem.login = patched_login
+    #LoginSystem.register = patched_register
+#
+#
     def select_character(self):
         selecting = True
 
@@ -633,30 +659,50 @@ class GameClient:
 
     def run(self):
         pygame.init()
-        manager = pygame_gui.UIManager(self.screen.get_size())
 
-        input_field, button = self.show_popup(manager, self.screen.get_rect())
+        #self.fix_login_system()
 
-        popup_running = True
-        while popup_running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == pygame_gui.UI_BUTTON_PRESSED and event.ui_element == button:
-                    user_input = input_field.get_text()
-                    print("User Input:", user_input)  # Do something with this input
-                    popup_running = False  # Close popup and continue execution
+        try:
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.logger.info(f'Client_socket: {self.client_socket}')
 
-                manager.process_events(event)
+        except Exception as e:
+            self.logger.info(f'Error connecting to server: {str(e)}')
+            self.server_error = True
+            self.error_message = f'Connection error: {str(e)}'
+            pygame.quit()
+            sys.exit()
 
-            manager.update(0.016)
-            self.screen.fill((0, 0, 0))
-            manager.draw_ui(self.screen)
-            pygame.display.update()
+        #login_system = LoginSystem(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, self.client_socket)
 
-        # Continue with existing logic
+        try:
+            self.client_socket.connect((self.host, self.port))
+
+            data = self.client_socket.recv(4096)
+            pickle.loads(data)
+
+        except Exception as e:
+            self.logger.info(f'Error connecting to server: {str(e)}')
+            self.server_error = True
+            self.error_message = f'Connection error: {str(e)}'
+            pygame.quit()
+            sys.exit()
+
+        #login_success, user_data = login_system.run()
+
+        #if not login_success:
+            #self.logger.info('Login cancelled or failed')
+            #if self.client_socket:
+                #self.client_socket.close()
+            #pygame.quit()
+            #sys.exit()
+        #self.logger.info(f'User logged in: {user_data['account_name']}')
+
+        self.client_socket.close()
+
         if self.connect_to_server():
+            #self.send_data({'login_info': user_data})
+
             self.select_character()
             self.wait_for_match()
             self.run_game()

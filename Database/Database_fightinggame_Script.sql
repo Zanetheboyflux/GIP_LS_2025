@@ -37,6 +37,12 @@ drop column Player2_character;
 alter table Pygame
 add player_name varchar(255) not null; 
 alter table Pygame 
-add character_selected varchar(255) not null; 
+add character_selected varchar(255) not null;
+alter table users
+add win_count integer default 0; 
+alter table users  
+add total_games integer default 0; 
+alter table users 
+add loss_count integer default 0; 
 
 INSERT INTO pygame (Winner, Loser, player_name, character_selected) VALUES (2, 1, 'Player2', 'Mewtwo'); 

@@ -2,6 +2,8 @@ import pickle
 import mysql.connector
 import logging
 import os
+import hashlib
+import re
 import time
 from typing import Dict, Any, Optional, Tuple
 
@@ -68,7 +70,8 @@ class GameDatabase:
                     accountID INTEGER FOREIGN KEY REFERENCE GameID NOT NULL AUTO_INCREMENT, 
                     account_name VARCHAR(255) NOT NULL, 
                     account_password VARCHAR(255) NOT NULL, 
-                    win_count INTEGER default 0''')
+                    win_count INTEGER default 0
+                    loss_count INTEGER default 0''')
 
                 self.connection.commit()
                 self.logger.info('Database initialized succesfully')
@@ -93,14 +96,149 @@ class GameDatabase:
             self.connection.close()
             self.connection = None
 
-    def save_player_selection(self, player_name, character_selected):
+    def hash_password(selfself, password: str) -> str:
+        "hash password using SHA_256"
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    def register_user(self, username: str, password:str) -> Dict[str, Any]:
+        result = {'success': False, 'message': '', "user_id": None}
+
+        if not re.match(r'^[a-zA-Z0-9_]{3, 20}$', username):
+            result["message"]= "Username must be 3-20 characters and contain only letters, numbers, and underscores"
+            return result
+
+        if len(password) < 6:
+            result['message'] = 'Password must be at least 6 characters long'
+            return result
+        try:
+            self.connect()
+            if self.connection:
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT accountID FROM users WHERE Username = %s", (username,))
+                if cursor.fetchone():
+                    result['message'] = 'username already exists'
+                    return result
+
+                password_hash = self.hash_password(password)
+
+                cursor.execute(
+                    'INSERT INTO users (account_name, account_password) VALUES (%s, %s)',
+                    (username, password_hash)
+                )
+                self.connection.commit()
+
+                accountID = cursor.lastrowid
+                result['success'] = True
+                result['message'] = "Registration successful"
+                result['accountID'] = accountID
+
+                self.logger.info(f"New user registered: {username} (ID: {accountID})")
+                return result
+
+        except Exception as e:
+            self.logger.error(f'Error registering new user: {str(e)}')
+            result['message'] = 'Database error during registration'
+
+        finally:
+            self.disconnect()
+        return result
+
+    def login_user(self, username: str, password: str) -> Dict[str, Any]:
+        result = {"success": False, 'message': '', 'user_data': None}
+        try:
+            self.connect()
+            if self.connection:
+                cursor = self.connection.cursor(dictionary=True)
+
+                password_hash = self.hash_password(password)
+
+                cursor.execute(
+                    'SELECT accountID, account_name, win_count, loss_count FROM users WHERE account_name = %s AND account_password= %s',
+                    (username, password_hash)
+                )
+                user_data = cursor.fetchone()
+
+                if not user_data:
+                    result['message'] = 'Invalid username or password'
+                    return result
+
+                self.connection.commit()
+
+                result['success'] = True
+                result['message'] = 'login successful'
+                result['user_data'] = user_data
+
+                self.logger.info(f'User logged in {username} (ID: {user_data['accountID']}')
+                return result
+        except Exception as e:
+            self.logger.error(f'Error during login: {str(e)}')
+            result['message'] = 'Database error during login'
+        finally:
+            self.disconnect()
+        return result
+
+    def get_user_stats(self, user_id: int) -> Dict[str, Any]:
+        stats = {
+            'win_count': 0,
+            'loss_count': 0,
+            'win_rate': 0.0,
+            'favorite_character': None
+        }
+
+        try:
+            self.connect()
+            if self.connection:
+                cursor = self.connection.cursor(dictionary=True)
+                cursor.execute(
+                    'SELECT win_count, loss_count FROM users WHERE accountID = %s',
+                    (user_id,)
+                )
+                user_data = cursor.fetchone()
+
+                if not user_data:
+                    return stats
+                stats["wins"] = user_data["win_count"]
+                if stats["total_games"] > 0:
+                    stats["win_rate"] = (stats["wins"] / stats["total_games"]) * 100
+
+                cursor.execute("""
+                                    SELECT Player1_character as character, COUNT(*) as count 
+                                    FROM pygame 
+                                    WHERE UserID = %s 
+                                    GROUP BY Player1_character 
+                                    ORDER BY count DESC 
+                                    LIMIT 1
+                                """, (user_id,))
+                favorite = cursor.fetchone()
+
+                if favorite:
+                    stats["favorite_character"] = favorite["character"]
+
+                cursor.execute("""
+                                    SELECT GameID, Winner, Loser, Player1_character, Player2_character, Timestamp
+                                    FROM pygame
+                                    WHERE UserID = %s
+                                    ORDER BY Timestamp DESC
+                                    LIMIT 5
+                                """, (user_id,))
+                stats["recent_games"] = cursor.fetchall()
+
+                return stats
+
+        except Exception as e:
+            self.logger.error(f"Error getting user stats: {str(e)}")
+        finally:
+            self.disconnect()
+        return stats
+
+    def save_player_selection(self, player1_character, player2_character):
         try:
             self.connect()
             if self.connection:
                 cursor = self.connection.cursor()
                 if self.db_type == 'mysql':
-                    cursor.execute("INSERT INTO pygame (player_name, character_selected) VALUES (?, ?)",
-                                   (player_name, character_selected))
+                    cursor.execute("INSERT INTO pygame (Player1_character, player2_character) VALUES (%s, %s)",
+                                   (player1_character, player2_character))
                 self.connection.commit()
                 result = True
                 return result
@@ -112,7 +250,7 @@ class GameDatabase:
             self.disconnect()
         return result
 
-    def record_game_result(self, winner: int, loser: int, player1_character: str, player2_character: str) -> bool:
+    def record_game_result(self, winner: int, loser: int, player1_character: str, player2_character: str, user_id: int = None) -> bool:
         """Records the result of a game in the database
 
             Args:
@@ -131,9 +269,15 @@ class GameDatabase:
                 if self.db_type == 'mysql':
                     if player1_character and player2_character:
                         cursor.execute('''
-                                            INSERT INTO pygame (Winner, Loser, player_name, character_selected)
+                                            INSERT INTO pygame (Winner, Loser, Player1_character, player2_character)
                                             VALUES (%s, %s, %s, %s)
                                         ''', (winner, loser, player1_character, player2_character))
+
+                    if user_id:
+                        if winner == 1:
+                            cursor.execute("UPDATE users set win_count = win_count + 1 WHERE accountID = %s", (user_id,))
+                        else:
+                            cursor.execute("UPDATE users set loss_count = loss_count + 1 WHERE accountID = %s", (user_id,))
                     else:
                         cursor.execute('INSERT INTO pygame (Winner, Loser) VALUES (%s, %s)',
                                        (winner, loser))
@@ -166,22 +310,22 @@ class GameDatabase:
 
             cursor.execute('''
             SELECT COUNT(*) FROM pygame
-            WHERE character_selected = ?
+            WHERE Player1_character = %s
             ''', (character_name,))
 
             player1_count = cursor.fetchone()[0]
 
             cursor.execute('''
             SELECT COUNT(*) FROM pygame
-            WHERE character_selected = ?
+            WHERE player2_character = %s
             ''', (character_name,))
 
             player2_count = cursor.fetchone()[0]
 
             cursor.execute('''
             SELECT COUNT(*) FROM pygame
-            WHERE (Winner = 1 AND character_selected = ?) 
-            or (Winner = 2 AND character_selected = ?''',
+            WHERE (Winner = 1 AND Player1_character = %s) 
+            or (Winner = 2 AND player2_character = %s''',
             (character_name, character_name))
             wins = cursor.fetchone()[0]
 
@@ -197,7 +341,7 @@ class GameDatabase:
         finally:
             self.disconnect()
 
-    def get_recent_games(self, limit: int = 10) -> list:
+    def get_recent_games(self, limit: int = 10, user_id: int = None) -> list:
         """
         Args:
         :param limit (int): Maximum number of games to return
@@ -207,33 +351,78 @@ class GameDatabase:
         games = []
         try:
             self.connect()
-            cursor = self.connection.cursor()
-            cursor.execute(''' 
-            SELECT GameID, Winner, Loser, character_selected, player_name, Timestamp
-            FROM pygame
-            ORDER BY Timestamp DESC
-            LIMIT ?''',
-                           (limit,))
+            cursor = self.connection.cursor(dictionary=True)
 
-            columns = ['GameID', 'winner', 'loser', 'player_name', 'character_selected', 'timestamp']
+            if user_id:
+                cursor.execute('''
+                SELECT GameID, Winner, Loser, Player1_character, player2_character, Timestamp, accountID
+                FROM pygame, users
+                WHERE accountID = %s
+                ORDER BY Timestamp DESC
+                LIMIT %s''',
+                               (user_id, limit))
+            else:
+                cursor.execute('''
+                SELECT GameID, Winner, Loser, Player1_character, player2_character, Timestamp
+                FROM pygame
+                ORDER BY Timestamp DESC
+                LIMIT %s''',
+                               (limit,))
 
-            for row in cursor.fetchall():
-                game_data = dict(zip(columns, row))
-                games.append(game_data)
+            games = cursor.fetchall()
             return games
+
         except Exception as e:
             self.logger.error(f'Error getting recent games: {str(e)}')
             return games
         finally:
             self.disconnect()
 
+#class LoginManager:
+#    def __init__(self, db: GameDatabase):
+#        self.db = db
+#        self.current_user = None
+#        self.logger = logging.getLogger('LoginManager')
+#
+#    def register(self, username: str, password: str) -> Dict[str, Any]:
+#        """Register a new user"""
+#        return self.db.register_user(username, password)
+#
+#    def login(self, username:str, password:str) -> Dict[str, Any]:
+#        result = self.db.login_user(username, password)
+#        if result["success"]:
+#            self.current_user = result["user_data"]
+#        return result
+#
+#    def logout(self):
+#        self.current_user = None
+#        return {"success": True, "message": "Logged out successfully"}
+#
+#    def get_current_user(self)-> Optional[Dict[str, Any]]:
+#        return self.current_user
+#
+#    def is_logged_in(self) -> bool:
+#        return self.current_user is not None
+#
+#    def get_user_stats(self) -> Dict[str, Any]:
+#        if not self.current_user:
+#            return {"error": "No user logged in"}
+#        return self.db.get_user_stats(self.current_user["accountID"])
+#
+#    def record_game_result(self, winner: int, loser:int, player_name: str, character_selected: str) -> bool:
+#        user_id = self.current_user['accountID'] if self.current_user else None
+#        return self.db.record_game_result(winner, loser, player_name, character_selected, user_id)
+
 class DatabaseUpdater:
-    def __init__(self, db: GameDatabase):
+    def __init__(self, db: GameDatabase,
+                 #login_manager: LoginManager= None
+                 ):
         """
         args:
         :param db (GameDatabase): Database handler instance
         """
         self.db = db
+        #self.login_manager = login_manager
         self.logger = logging.getLogger('DatabaseUpdater')
 
     def update_from_game_state(self, game_state: Dict[str, Any], winner: int) -> bool:
@@ -265,17 +454,29 @@ class DatabaseUpdater:
                 self.logger.error("Invalid game state: character data missing")
                 return False
 
-            player_name = f"Player {winner}"
-            character_selected = players[winner]['character']
+            Winner = f"Player {winner}"
+            character_winner = players[winner]['character']
 
             loser = 2 if winner == 1 else 1
 
-            return self.db.record_game_result(
-                winner=winner,
-                loser=loser,
-                player1_character=player_name,
-                player2_character=character_selected
-            )
+            if self.login_manager and self.login_manager.is_logged_in():
+                user_id = self.login_manager.current_user("accountID")
+                return self.db.record_game_result(
+                    winner=winner,
+                    loser=loser,
+                    player1_character=Winner,
+                    player2_character= character_winner ,
+                    user_id=user_id
+                )
+
+            else:
+                return self.db.record_game_result(
+                    winner=winner,
+                    loser=loser,
+                    player1_character=Winner,
+                    player2_character= character_winner
+                )
+
         except Exception as e:
             self.logger.error(f"Error updating database from game state: {str(e)}")
             return False
@@ -291,7 +492,8 @@ class ServerDatabaseHandler:
             'db_path': 'game_database'
         }
         self.db = GameDatabase(**self.db_config)
-        self.updater = DatabaseUpdater(self.db)
+        self.login_manager = LoginManager(self.db)
+        self.updater = DatabaseUpdater(self.db, self.login_manager)
         self.logger = logging.getLogger('ServerDatabaseHandler')
 
     def handle_game_over(self, game_state: Dict[str, Any], winner:int)-> bool:
@@ -325,6 +527,15 @@ class ServerDatabaseHandler:
         except Exception as e:
             self.logger.info(f'Error saving character selection: {str(e)}')
             return False
+
+    def authenticate_user(self, username:str, password:str) -> Dict[str, Any]:
+        return self.login_manager.login(username, password)
+
+    def register_new_user(self, username: str, password:str) -> Dict[str, Any]:
+        return self.login_manager.register(username, password)
+
+    def get_current_user_stats(self) -> Dict[str, Any]:
+        return self.login_manager.get_user_stats()
 
 def integrate_with_server(server_instance):
     """
@@ -388,12 +599,25 @@ def integrate_with_server(server_instance):
 
 if __name__ == "__main__":
     test_db = GameDatabase(db_type='mysql', db_path='test_game_database')
+    login_manager = LoginManager(test_db)
+
+    register_result = login_manager.register('testuser', 'password123')
+    print(f'Registration result: {register_result}')
+
+    login_result = login_manager.login("testuser", "password123")
+    print(f"Login result: {login_result}")
+
     test_db.record_game_result(
         winner=1,
         loser=2,
-        player1_character="Lucario",
-        player2_character='Mewtwo'
+        player1_character='Mewtwo',
+        player2_character='Lucario',
+        user_id=login_result["user_data"]["UserID"] if login_result["success"] else None
     )
+
+    if login_manager.is_logged_in():
+        user_stats = login_manager.get_user_stats()
+        print(f"User stats: {user_stats}")
 
     lucario_stats = test_db.get_character_stats("lucario")
     print(f"Lucario stats: {lucario_stats}")
